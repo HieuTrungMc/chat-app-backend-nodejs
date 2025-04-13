@@ -1,131 +1,119 @@
-const { dynamo } = require("../utils/aws-helper");
+const { pool } = require("../utils/aws-helper");
 const { v4: uuidv4 } = require("uuid");
-const tableName = "User";
 
 const model = {
-  createAccount: async ({ password, ...userData}) => {
-    //const id = uuidv4();
-    const params = {
-      TableName: tableName,
-      Item: {
-        id: userData.id,
-        name: userData.name,
-        password: password,
-        phone: userData.phone,
-        image: userData.image,
-        location: userData.location,
-        birthday: userData.birthday,
-        email: userData.email,
-      },
-    };
+  createAccount: async ({ password, ...userData }) => {
     try {
-      await dynamo.put(params).promise();
+      const query = `
+        INSERT INTO user (UserID, Name, Password, Phone, ImageUrl, Location, Birthday, Email)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+
+      const [result] = await pool.execute(query, [
+        userData.id, // Using id from input, mapped to UserID in DB
+        userData.name,
+        password,
+        userData.phone,
+        userData.image || null, // image from input maps to ImageUrl in DB
+        userData.location || null,
+        userData.birthday || null,
+        userData.email || null
+      ]);
+
       return { ok: 1, ...userData };
     } catch (error) {
       console.error(error);
       throw error;
     }
   },
-  getAccountByPhone: async (phone) => {
-    const params = {
-      TableName: tableName,
-      //IndexName: "phone-index",
-      FilterExpression: "phone = :phone",
-      ExpressionAttributeValues: {
-        ":phone": phone,
-      },
-    };
-    try {
-      const data = await dynamo.scan(params).promise();
-      return data.Items;
-    } catch (error) {
-      console.error(error);
-      throw error;
-    }
-  },
-  getAccountById: async (id) => {
-        const params = {
-        TableName: tableName,
-        KeyConditionExpression: "id = :id",
-        ExpressionAttributeValues: {
-            ":id": Number(id),
-        },
-        };
-        try {
-        const data = await dynamo.query(params).promise();
-            const filteredItems = data.Items.map(({ password, ...rest }) => rest); // Remove the password field
-            return filteredItems;
-        } catch (error) {
-        console.error(error);
-        throw error;
-        }
-    },
-  getAccountByEmail : async (email) => {
-    const params = {
-      TableName: tableName,
-      //IndexName: "email-index",
-      FilterExpression: "email = :email",
-      ExpressionAttributeValues: {
-        ":email": email,
-      },
-    };
-    try {
-      const data = await dynamo.scan(params).promise();
-      return data.Items;
-    } catch (error) {
-      console.error(error);
-      throw error;
-    }
-  },
-  updateAccount: async (accId, updateData) => {
-    console.log(updateData)
-    const id = Number(accId);
-    const params = {
-      TableName: tableName,
-      Key: {id},
-      UpdateExpression: "set #name = :name, #phone = :phone",
-      ExpressionAttributeNames: {
-        "#name": "name", "#phone": "phone",
-      },
-      ExpressionAttributeValues: {
-        ":name": updateData.name, ":phone": updateData.phone,
-      },
-      ReturnValues: "ALL_NEW",
-    };
 
-    // Loop through updateData fields
-    for (const [key, value] of Object.entries(updateData)) {
-      if (value !== undefined && key !== "name" && key !== "phone") {
-        params.UpdateExpression += `, #${key} = :${key}`;
-        params.ExpressionAttributeNames[`#${key}`] = key;
-        params.ExpressionAttributeValues[`:${key}`] = value;
-      }
-    }
+  getAccountByPhone: async (phone) => {
     try {
-      const result = await dynamo.update(params).promise();
-      return {id: accId, ...updateData};
+      const query = `SELECT UserID as id, Name as name, Password as password, Phone as phone,
+                            ImageUrl as image, Location as location, Birthday as birthday, Email as email
+                     FROM user WHERE Phone = ?`;
+      const [rows] = await pool.execute(query, [phone]);
+      return rows;
     } catch (error) {
       console.error(error);
       throw error;
     }
   },
-  changePassword: async (accId, password) => {
-    const id = Number(accId);
-    const params = {
-      TableName: tableName,
-      Key: {id},
-      UpdateExpression: "set #password = :password",
-      ExpressionAttributeNames: {
-        "#password": "password",
-      },
-      ExpressionAttributeValues: {
-        ":password": password,
-      },
-      ReturnValues: "ALL_NEW",
-    };
+
+  getAccountById: async (id) => {
     try {
-      const result = await dynamo.update(params).promise();
-      return {ok: 1, id: accId};
+      const query = `SELECT UserID as id, Name as name, Phone as phone,
+                            ImageUrl as image, Location as location, Birthday as birthday, Email as email
+                     FROM user WHERE UserID = ?`;
+      const [rows] = await pool.execute(query, [Number(id)]);
+      return rows;
+    } catch (error) {
+      console.error(error);
+      throw error;
+    }
+  },
+
+  getAccountByEmail: async (email) => {
+    try {
+      const query = `SELECT UserID as id, Name as name, Password as password, Phone as phone,
+                            ImageUrl as image, Location as location, Birthday as birthday, Email as email
+                     FROM user WHERE Email = ?`;
+      const [rows] = await pool.execute(query, [email]);
+      return rows;
+    } catch (error) {
+      console.error(error);
+      throw error;
+    }
+  },
+
+  updateAccount: async (accId, updateData) => {
+    try {
+      // Map the input field names to database column names
+      const fieldMapping = {
+        name: 'Name',
+        password: 'Password',
+        phone: 'Phone',
+        image: 'ImageUrl',
+        location: 'Location',
+        birthday: 'Birthday',
+        email: 'Email'
+      };
+
+      // Build the SET part of the query dynamically
+      const setFields = [];
+      const values = [];
+
+      for (const [key, value] of Object.entries(updateData)) {
+        if (value !== undefined && fieldMapping[key]) {
+          setFields.push(`${fieldMapping[key]} = ?`);
+          values.push(value);
+        }
+      }
+
+      // Add the user ID to the values array for the WHERE clause
+      values.push(Number(accId));
+
+      const query = `
+          UPDATE user
+          SET ${setFields.join(', ')}
+          WHERE UserID = ?
+      `;
+
+      await pool.execute(query, values);
+
+      return { id: accId, ...updateData };
+    } catch (error) {
+      console.error(error);
+      throw error;
+    }
+  },
+
+  changePassword: async (accId, password) => {
+    try {
+      const query = `UPDATE user SET Password = ? WHERE UserID = ?`;
+      await pool.execute(query, [password, Number(accId)]);
+
+      return { ok: 1, id: accId };
     } catch (error) {
       console.error(error);
       throw error;
