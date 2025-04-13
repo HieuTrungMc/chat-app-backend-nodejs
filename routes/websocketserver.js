@@ -272,7 +272,7 @@ module.exports = (app) => {
 
                                       // Send message to all online members
                                       memberResults.forEach(member => {
-                                        const memberId = member.UserID.toString();
+                                        const memberId = member.UserID
                                         console.log(`Attempting to send attachment message to user: ${memberId}`);
 
                                         const targetWs = userConnections.get(memberId);
