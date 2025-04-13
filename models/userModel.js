@@ -68,6 +68,12 @@ const model = {
 
   updateAccount: async (accId, updateData) => {
     try {
+      // First check if the user exists
+      const checkQuery = `SELECT COUNT(*) as count FROM user WHERE UserID = ?`;
+      const [checkResult] = await pool.execute(checkQuery, [Number(accId)]);
+
+      const userExists = checkResult[0].count > 0;
+
       // Map the input field names to database column names
       const fieldMapping = {
         name: 'Name',
@@ -79,6 +85,8 @@ const model = {
         email: 'Email'
       };
 
+      if (userExists) {
+        // User exists, perform UPDATE
       // Build the SET part of the query dynamically
       const setFields = [];
       const values = [];
@@ -100,6 +108,27 @@ const model = {
       `;
 
       await pool.execute(query, values);
+      } else {
+        // User doesn't exist, perform INSERT
+        const columns = ['UserID'];
+        const placeholders = ['?'];
+        const values = [Number(accId)];
+
+        for (const [key, value] of Object.entries(updateData)) {
+          if (value !== undefined && fieldMapping[key]) {
+            columns.push(fieldMapping[key]);
+            placeholders.push('?');
+            values.push(value);
+    }
+        }
+
+        const query = `
+            INSERT INTO user (${columns.join(', ')})
+            VALUES (${placeholders.join(', ')})
+        `;
+
+        await pool.execute(query, values);
+      }
 
       return { id: accId, ...updateData };
     } catch (error) {

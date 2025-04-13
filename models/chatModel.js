@@ -175,7 +175,7 @@ const chatModel = {
     }
   },
 
-  getChatHistory: async (chatId, count = 10, userId = null, before = null) => {
+  getChatHistory: async (chatId, count = 10, userId = null) => {
     try {
       // If userId is provided, verify the user is a member of this chat
       if (userId) {
@@ -213,11 +213,6 @@ const chatModel = {
       `;
 
       const queryParams = [chatId];
-
-      if (before) {
-        messagesQuery += ' AND m.MessageID < ?';
-        queryParams.push(before);
-      }
 
       messagesQuery += ' ORDER BY m.Timestamp DESC LIMIT ?';
       queryParams.push(count);

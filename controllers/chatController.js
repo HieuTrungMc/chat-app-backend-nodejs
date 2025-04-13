@@ -71,9 +71,8 @@ Controller.getChatInfo = async (req, res) => {
 Controller.getChatHistory = async (req, res) => {
   try {
     const chatId = req.params.chatId;
-    const count = Math.min(parseInt(req.params.count) || 10, 20); // Default to 10, max 20
+    const count = Math.min(parseInt(req.params.count) || 10, 50);
     const userId = req.query.userId;
-    const before = req.query.before;
 
     if (!chatId) {
       return res.status(400).json({
@@ -82,7 +81,7 @@ Controller.getChatHistory = async (req, res) => {
       });
     }
 
-    const messages = await ChatModel.getChatHistory(chatId, count, userId, before);
+    const messages = await ChatModel.getChatHistory(chatId, count, userId);
 
     return res.status(200).json({
       success: true,
