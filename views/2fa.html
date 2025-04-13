@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2FA Authentication</title>
+</head>
+<body>
+<h1>Two-Factor Authentication</h1>
+<div id="qrCodeContainer"></div>
+<input type="text" id="token" placeholder="Enter 2FA code">
+<button id="verifyButton">Verify Code</button>
+<p id="message"></p>
+
+<script>
+  async function fetchQRCode() {
+    const response = await fetch('/user/2fa/generate'); // Fetch from the new endpoint
+    const data = await response.json();
+    document.getElementById('qrCodeContainer').innerHTML = `<img src="${data.qrCode}" alt="QR Code">`;
+    localStorage.setItem('secret', data.secret); // Store secret for verification
+  }
+
+  async function verifyCode() {
+    const token = document.getElementById('token').value;
+    const secret = localStorage.getItem('secret');
+    const response = await fetch('/user/2fa/verify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ token, secret })
+    });
+    const result = await response.json();
+    document.getElementById('message').textContent = result.message;
+  }
+
+  document.getElementById('verifyButton').addEventListener('click', verifyCode);
+  fetchQRCode();
+</script>
+</body>
+</html>
