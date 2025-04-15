@@ -133,4 +133,74 @@ Controller.searchMessages = async (req, res) => {
   }
 };
 
+Controller.deleteMessage = async (req, res) => {
+  try {
+    const messageId = req.query.messageId;
+    const deleteType = req.query.deleteType;
+
+    if (!messageId) {
+      return res.status(400).json({
+        success: false,
+        message: "Message ID is required"
+      });
+    }
+
+    if (!deleteType) {
+      return res.status(400).json({
+        success: false,
+        message: "Delete type is required"
+      });
+    }
+
+    // Validate delete type
+    if (deleteType !== 'remove' && deleteType !== 'unsent') {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid delete type. Must be 'remove' or 'unsent'"
+      });
+    }
+
+    // Process the message deletion
+    const result = await ChatModel.deleteMessage(messageId, deleteType);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+    const app = req.app;
+    if (app.locals.userConnections) {
+      const messageObj = {
+        type: "changeMessageType",
+        msgId: messageId,
+        deleteType: deleteType
+      };
+      app.locals.userConnections.forEach((ws, userId) => {
+        if (ws.readyState === 1) { // WebSocket.OPEN = 1
+          try {
+            ws.send(JSON.stringify(messageObj));
+            console.log(`Message status change notification sent to user ${userId}`);
+          } catch (e) {
+            console.error(`Error sending notification to user ${userId}:`, e);
+          }
+        }
+      });
+
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    console.error("Error deleting message:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete message",
+      error: error.message
+    });
+  }
+};
+
 module.exports = Controller;

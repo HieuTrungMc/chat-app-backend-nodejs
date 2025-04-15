@@ -203,6 +203,11 @@ const chatModel = {
                      WHEN m.Type = 'attachment' THEN am.AttachmentUrl
                      ELSE NULL
                      END as AttachmentUrl,
+                 CASE
+                     WHEN m.Type = 'text' THEN tm.Type
+                     WHEN m.Type = 'attachment' THEN am.Type
+                     ELSE NULL
+                     END as DeleteReason,
                  u.Name as SenderName,
                  u.ImageUrl as SenderImage
           FROM message m
@@ -227,6 +232,7 @@ const chatModel = {
         timestamp: msg.Timestamp,
         content: msg.Content,
         attachmentUrl: msg.AttachmentUrl,
+        deleteReason: msg.DeleteReason, // Include the Type field from textmessage/attachmentmessage as deleteReason
         senderName: msg.SenderName,
         senderImage: msg.SenderImage,
         reactions: msg.Reactions ? JSON.parse(msg.Reactions) : []
@@ -298,7 +304,75 @@ const chatModel = {
       console.error("Error in searchMessages:", error);
       throw error;
     }
+  },
+
+  deleteMessage: async (messageId, deleteType) => {
+    try {
+      // Validate delete type
+      if (deleteType !== 'remove' && deleteType !== 'unsent') {
+        return {
+          success: false,
+          message: "Invalid delete type. Must be 'remove' or 'unsent'"
+        };
+      }
+
+      const messageQuery = `
+      SELECT Type
+      FROM message
+      WHERE MessageID = ?
+    `;
+      const [messages] = await pool.execute(messageQuery, [messageId]);
+
+      if (messages.length === 0) {
+        return {
+          success: false,
+          message: "Message not found in this chat"
+        };
+      }
+
+      // Determine which table to update based on the message type
+      const messageType = messages[0].Type;
+      let updateQuery;
+
+      if (messageType === 'text') {
+        updateQuery = `
+        UPDATE textmessage
+        SET Type = ?
+        WHERE MessageID = ?
+      `;
+      } else if (messageType === 'attachment') {
+        updateQuery = `
+        UPDATE attachmentmessage
+        SET Type = ?
+        WHERE MessageID = ?
+      `;
+      } else {
+        return {
+          success: false,
+          message: "Unknown message type"
+        };
+      }
+
+      const [result] = await pool.execute(updateQuery, [deleteType, messageId]);
+
+      if (result.affectedRows === 0) {
+        return {
+          success: false,
+          message: "Failed to update message"
+        };
+      }
+
+      return {
+        success: true,
+        message: deleteType === 'remove' ? "Message removed successfully" : "Message marked as unsent"
+      };
+    } catch (error) {
+      console.error("Error in deleteMessage:", error);
+      throw error;
+    }
   }
+
+
 };
 
 module.exports = chatModel;

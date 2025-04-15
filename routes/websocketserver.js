@@ -11,6 +11,9 @@ const dbConnection = mysql.createConnection({
 module.exports = (app) => {
   const userConnections = new Map();
 
+  // Make userConnections accessible from the Express app
+  app.locals.userConnections = userConnections;
+
   app.ws('/ws', (ws, req) => {
     console.log('WebSocket connection established');
 
@@ -180,10 +183,12 @@ module.exports = (app) => {
                                   ws.send(JSON.stringify({ type: 'error', message: 'Error storing message content', originalType: 'sendChat' }));
                                   return;
                                 }
+                                messagePayload.messageId = messageId
                                 ws.send(JSON.stringify({
                                   type: 'ok',
                                   originalType: 'sendChat',
-                                  messageId: messageId
+                                  messageId: messageId,
+                                  messagePayload: messagePayload
                                 }));
                                 dbConnection.query(
                                     'SELECT UserID FROM chatmember WHERE ChatID = ? AND UserID != ?',
@@ -202,7 +207,7 @@ module.exports = (app) => {
                                         console.log(`Attempting to send message to user: ${memberId}`);
 
                                         const targetWs = userConnections.get(memberId);
-                                        console.log(targetWs)
+                                        //console.log(targetWs)
 
                                         if (targetWs && targetWs.readyState === 1) { // WebSocket.OPEN = 1
                                           console.log(`Connection found for user ${memberId}, sending message`);
