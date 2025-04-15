@@ -4,7 +4,7 @@ const { v4: uuidv4 } = require("uuid");
 const chatModel = {
   getUserChats: async (userId) => {
     try {
-      // SQL query to get all chats where the user is a member
+      
       const query = `
           SELECT c.ChatID, c.CreatedDate, c.Type, c.Status, c.Owner
           FROM chat c
@@ -14,9 +14,8 @@ const chatModel = {
       `;
       const [chats] = await pool.execute(query, [userId]);
 
-      // For each chat, get the other members
       const enrichedChats = await Promise.all(chats.map(async (chat) => {
-        // Query to get all members of this chat
+        
         const membersQuery = `
             SELECT UserID
             FROM chatmember
@@ -24,12 +23,50 @@ const chatModel = {
         `;
         const [members] = await pool.execute(membersQuery, [chat.ChatID, userId]);
 
-        // For P2P chats, there should be one other member
+        
+        const latestMessageQuery = `
+          SELECT m.MessageID, m.UserID, m.Type, m.Timestamp,
+                 CASE
+                     WHEN m.Type = 'text' THEN tm.Content
+                     WHEN m.Type = 'attachment' THEN am.Content
+                     ELSE NULL
+                     END as Content,
+                 CASE
+                     WHEN m.Type = 'attachment' THEN am.AttachmentUrl
+                     ELSE NULL
+                     END as AttachmentUrl,
+                 CASE
+                     WHEN m.Type = 'text' THEN tm.Type
+                     WHEN m.Type = 'attachment' THEN am.Type
+                     ELSE NULL
+                     END as DeleteType,
+                 u.Name as SenderName
+          FROM message m
+                   LEFT JOIN textmessage tm ON m.MessageID = tm.MessageID
+                   LEFT JOIN attachmentmessage am ON m.MessageID = am.MessageID
+                   JOIN user u ON m.UserID = u.UserID
+          WHERE m.ChatID = ?
+          ORDER BY m.Timestamp DESC
+              LIMIT 1
+      `;
+        const [latestMessages] = await pool.execute(latestMessageQuery, [chat.ChatID]);
+        const lastMessage = latestMessages.length > 0 ? {
+          messageId: latestMessages[0].MessageID,
+          userId: latestMessages[0].UserID,
+          type: latestMessages[0].Type,
+          timestamp: latestMessages[0].Timestamp,
+          content: latestMessages[0].Content,
+          attachmentUrl: latestMessages[0].AttachmentUrl,
+          deleteType: latestMessages[0].DeleteType,
+          senderName: latestMessages[0].SenderName
+        } : null;
+
+        
         if (chat.Type === 'private' && members.length > 0) {
           const otherUserId = members[0].UserID;
 
           try {
-            // Get user details from MySQL
+            
             const userQuery = `
                 SELECT UserID as id, Name as name, ImageUrl as image
                 FROM user
@@ -44,7 +81,8 @@ const chatModel = {
                 ...chat,
                 chatName: otherUser.name || 'Unknown User',
                 imageUrl: otherUser.image || '',
-                otherUserId: otherUserId
+                otherUserId: otherUserId,
+                lastMessage: lastMessage
               };
             }
           } catch (error) {
@@ -52,14 +90,25 @@ const chatModel = {
           }
         }
 
-        // Default return if not a P2P chat or if user details couldn't be fetched
+        
         return {
           ...chat,
           chatName: chat.Type === 'private' ? 'Private Chat' : 'Group Chat',
           imageUrl: '',
-          otherUserId: members.length > 0 ? members[0].UserID : null
+          otherUserId: members.length > 0 ? members[0].UserID : null,
+          lastMessage: lastMessage
         };
       }));
+
+      
+      enrichedChats.sort((a, b) => {
+        
+        if (!a.lastMessage) return 1;
+        if (!b.lastMessage) return -1;
+
+        
+        return new Date(b.lastMessage.timestamp) - new Date(a.lastMessage.timestamp);
+      });
 
       return enrichedChats;
     } catch (error) {
@@ -70,7 +119,7 @@ const chatModel = {
 
   getChatInfo: async (chatId, userId = null) => {
     try {
-      // Get basic chat info
+      
       const chatQuery = `
           SELECT c.ChatID, c.CreatedDate, c.Type, c.Status, c.Owner
           FROM chat c
@@ -84,7 +133,7 @@ const chatModel = {
 
       const chat = chats[0];
 
-      // If userId is provided, verify the user is a member of this chat
+      
       if (userId) {
         const memberQuery = `
             SELECT COUNT(*) as isMember
@@ -94,11 +143,11 @@ const chatModel = {
         const [memberCheck] = await pool.execute(memberQuery, [chatId, userId]);
 
         if (memberCheck[0].isMember === 0) {
-          return null; // User is not a member of this chat
+          return null; 
         }
       }
 
-      // Get all members of the chat
+      
       const membersQuery = `
           SELECT cm.UserID, cm.Role, u.Name, u.ImageUrl, u.Phone, u.Email, u.Location
           FROM chatmember cm
@@ -107,7 +156,7 @@ const chatModel = {
       `;
       const [members] = await pool.execute(membersQuery, [chatId]);
 
-      // Get the latest message
+      
       const latestMessageQuery = `
           SELECT m.MessageID, m.UserID, m.Type, m.Timestamp,
                  CASE
@@ -130,13 +179,13 @@ const chatModel = {
       `;
       const [latestMessages] = await pool.execute(latestMessageQuery, [chatId]);
 
-      // Determine chat name and image based on type
+      
       let chatName = '';
       let imageUrl = '';
       let otherUserId = null;
 
       if (chat.Type === 'private' && members.length === 2) {
-        // For private chats, use the other user's name and image
+        
         const otherMember = userId ?
             members.find(m => m.UserID !== parseInt(userId)) :
             members[0];
@@ -149,7 +198,7 @@ const chatModel = {
           chatName = 'Private Chat';
         }
       } else {
-        // For group chats, use the chat ID as name for now
+        
         chatName = `Group Chat ${chatId}`;
       }
 
@@ -177,7 +226,7 @@ const chatModel = {
 
   getChatHistory: async (chatId, count = 10, userId = null) => {
     try {
-      // If userId is provided, verify the user is a member of this chat
+      
       if (userId) {
         const memberQuery = `
             SELECT COUNT(*) as isMember
@@ -187,11 +236,11 @@ const chatModel = {
         const [memberCheck] = await pool.execute(memberQuery, [chatId, userId]);
 
         if (memberCheck[0].isMember === 0) {
-          return []; // User is not a member of this chat
+          return []; 
         }
       }
 
-      // Build the query based on parameters
+      
       let messagesQuery = `
           SELECT m.MessageID, m.UserID, m.Type, m.Timestamp, m.Reactions,
                  CASE
@@ -224,7 +273,7 @@ const chatModel = {
 
       const [messages] = await pool.execute(messagesQuery, queryParams);
 
-      // Format the messages
+      
       return messages.map(msg => ({
         messageId: msg.MessageID,
         userId: msg.UserID,
@@ -232,7 +281,7 @@ const chatModel = {
         timestamp: msg.Timestamp,
         content: msg.Content,
         attachmentUrl: msg.AttachmentUrl,
-        deleteReason: msg.DeleteReason, // Include the Type field from textmessage/attachmentmessage as deleteReason
+        deleteReason: msg.DeleteReason, 
         senderName: msg.SenderName,
         senderImage: msg.SenderImage,
         reactions: msg.Reactions ? JSON.parse(msg.Reactions) : []
@@ -245,7 +294,7 @@ const chatModel = {
 
   searchMessages: async (chatId, searchQuery, userId = null) => {
     try {
-      // If userId is provided, verify the user is a member of this chat
+      
       if (userId) {
         const memberQuery = `
           SELECT COUNT(*) as isMember
@@ -255,11 +304,11 @@ const chatModel = {
         const [memberCheck] = await pool.execute(memberQuery, [chatId, userId]);
 
         if (memberCheck[0].isMember === 0) {
-          return []; // User is not a member of this chat
+          return []; 
         }
       }
 
-      // Search for messages containing the search query
+      
       const searchMessagesQuery = `
         SELECT m.MessageID, m.UserID, m.Type, m.Timestamp, m.Reactions,
                CASE 
@@ -288,7 +337,7 @@ const chatModel = {
       const searchPattern = `%${searchQuery}%`;
       const [messages] = await pool.execute(searchMessagesQuery, [chatId, searchPattern, searchPattern]);
 
-      // Format the messages
+      
       return messages.map(msg => ({
         messageId: msg.MessageID,
         userId: msg.UserID,
@@ -308,7 +357,7 @@ const chatModel = {
 
   deleteMessage: async (messageId, deleteType) => {
     try {
-      // Validate delete type
+      
       if (deleteType !== 'remove' && deleteType !== 'unsent') {
         return {
           success: false,
@@ -330,7 +379,7 @@ const chatModel = {
         };
       }
 
-      // Determine which table to update based on the message type
+      
       const messageType = messages[0].Type;
       let updateQuery;
 
