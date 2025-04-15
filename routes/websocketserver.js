@@ -24,7 +24,8 @@ module.exports = (app) => {
 
         switch (packet.type) {
           case 'joinSocket': {
-            const { userID } = packet;
+            let { userID } = packet;
+            userID = Number(userID);
 
             const existingConnection = userConnections.get(userID);
             if (existingConnection && existingConnection !== ws) {
