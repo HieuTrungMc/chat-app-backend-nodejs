@@ -165,4 +165,32 @@ Controller.acceptRequest = async (req, res) => {
   }
 };
 
+// List sent friend requests
+Controller.listSentRequests = async (req, res) => {
+  try {
+    const userId = req.query.userId;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "User ID is required"
+      });
+    }
+
+    const sentRequests = await ContactModel.listSentRequests(userId);
+
+    return res.status(200).json({
+      success: true,
+      data: sentRequests
+    });
+  } catch (error) {
+    console.error("Error fetching sent friend requests:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch sent friend requests",
+      error: error.message
+    });
+  }
+};
+
 module.exports = Controller;
