@@ -11,7 +11,7 @@ const dbConnection = mysql.createConnection({
 module.exports = (app) => {
   const userConnections = new Map();
 
-  // Make userConnections accessible from the Express app
+  
   app.locals.userConnections = userConnections;
 
   app.ws('/ws', (ws, req) => {
@@ -202,15 +202,15 @@ module.exports = (app) => {
 
                                       console.log(`Found ${memberResults.length} other members to notify`);
 
-                                      // Send message to all online members
+                                      
                                       memberResults.forEach(member => {
                                         const memberId = member.UserID;
                                         console.log(`Attempting to send message to user: ${memberId}`);
 
                                         const targetWs = userConnections.get(memberId);
-                                        //console.log(targetWs)
+                                        
 
-                                        if (targetWs && targetWs.readyState === 1) { // WebSocket.OPEN = 1
+                                        if (targetWs && targetWs.readyState === 1) { 
                                           console.log(`Connection found for user ${memberId}, sending message`);
 
                                           const messagePacket = {
@@ -230,8 +230,8 @@ module.exports = (app) => {
                                             console.log(`Message sent successfully to user ${memberId}`);
                                           } catch (e) {
                                             console.error(`Error sending message to user ${memberId}:`, e);
-                                            // If there's an error sending, the connection might be broken
-                                            // Remove it from the connections map
+                                            
+                                            
                                             userConnections.delete(memberId);
                                           }
                                         } else {
@@ -257,7 +257,7 @@ module.exports = (app) => {
                                   return;
                                 }
                                 messagePayload.messageId = messageId
-                                // Message successfully stored
+                                
                                 ws.send(JSON.stringify({
                                   type: 'ok',
                                   originalType: 'sendChat',
@@ -265,7 +265,7 @@ module.exports = (app) => {
                                   messagePayload: messagePayload
                                 }));
 
-                                // Get all members of the chat except the sender
+                                
                                 dbConnection.query(
                                     'SELECT UserID FROM chatmember WHERE ChatID = ? AND UserID != ?',
                                     [chatId, userId],
@@ -277,7 +277,7 @@ module.exports = (app) => {
 
                                       console.log(`Found ${memberResults.length} other members to notify for attachment`);
 
-                                      // Send message to all online members
+                                      
                                       memberResults.forEach(member => {
                                         const memberId = member.UserID
                                         console.log(`Attempting to send attachment message to user: ${memberId}`);
@@ -335,11 +335,11 @@ module.exports = (app) => {
 
     ws.on('error', (error) => {
       console.error('WebSocket error:', error);
-      // Don't remove from connections map here, as the close event will be fired
+      
     });
 
     ws.on('close', () => {
-      // Remove user from connections map on disconnect, but only if this is the current connection for the user
+      
       if (ws.userID && userConnections.get(ws.userID) === ws) {
         userConnections.delete(ws.userID);
         console.log(`User ${ws.userID} disconnected`);
@@ -347,9 +347,9 @@ module.exports = (app) => {
       }
     });
 
-    // Set a ping interval to keep connections alive
+    
     const pingInterval = setInterval(() => {
-      if (ws.readyState === 1) { // WebSocket.OPEN
+      if (ws.readyState === 1) { 
         try {
           ws.send(JSON.stringify({ type: 'pong' }));
         } catch (e) {
@@ -359,25 +359,25 @@ module.exports = (app) => {
       } else {
         clearInterval(pingInterval);
       }
-    }, 30000); // Send ping every 30 seconds
+    }, 30000); 
 
-    // Clear interval when connection closes
+    
     ws.on('close', () => {
       clearInterval(pingInterval);
     });
   });
 
-  // Add a periodic check for stale connections
+  
   setInterval(() => {
     console.log('Checking for stale connections...');
     userConnections.forEach((ws, userId) => {
-      if (ws.readyState !== 1) { // Not OPEN
+      if (ws.readyState !== 1) { 
         console.log(`Removing stale connection for user ${userId}`);
         userConnections.delete(userId);
       }
     });
     console.log(`Active connections after cleanup: ${userConnections.size}`);
-  }, 60000); // Check every minute
+  }, 60000); 
 
   console.log('WebSocket server initialized at /ws');
 };
