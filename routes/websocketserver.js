@@ -256,12 +256,13 @@ module.exports = (app) => {
                                   ws.send(JSON.stringify({ type: 'error', message: 'Error storing message content', originalType: 'sendChat' }));
                                   return;
                                 }
-
+                                messagePayload.messageId = messageId
                                 // Message successfully stored
                                 ws.send(JSON.stringify({
                                   type: 'ok',
                                   originalType: 'sendChat',
-                                  messageId: messageId
+                                  messageId: messageId,
+                                  messagePayload: messagePayload
                                 }));
 
                                 // Get all members of the chat except the sender

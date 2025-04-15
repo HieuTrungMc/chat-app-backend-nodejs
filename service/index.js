@@ -10,9 +10,9 @@ const FILE_TYPE_MATCH = ["image/png", "image/jpeg", "image/jpg", "image/gif"];
 
 const uploadFile = async (file) => {
   const filePath = `${randomString(4)}-${new Date().getTime()}-${file?.originalname}`
-  if (FILE_TYPE_MATCH.indexOf(file.mimetype) === -1) {
+  /*if (FILE_TYPE_MATCH.indexOf(file.mimetype) === -1) {
     throw new Error(`${file?.originalname} is invalid!`);
-  }
+  }*/
 
   const uploadParams = {
     Bucket: process.env.BUCKET_NAME,
