@@ -1,7 +1,7 @@
 const { pool } = require("../utils/aws-helper");
 
 const contactModel = {
-  // List all contacts for a user
+  
   listContacts: async (userId) => {
     try {
       const query = `
@@ -30,10 +30,10 @@ const contactModel = {
     }
   },
   
-  // Find users by phone number (partial match) and check relationship status
+  
   findByPhone: async (phone, userId) => {
     try {
-      // Get all users matching the phone pattern with relationship information
+      
       const query = `
         SELECT u.UserID, u.Name, u.Email, u.Phone, u.ImageUrl, u.Location,
                (SELECT COUNT(*) FROM contact c WHERE c.UserID = ? AND c.ContactID = u.UserID) > 0 AS isFriend,
@@ -56,8 +56,8 @@ const contactModel = {
         phone: user.Phone,
         imageUrl: user.ImageUrl,
         location: user.Location,
-        friend: user.isFriend === 1,  // Convert to boolean
-        friendRequestSent: user.friendRequestSent === 1  // Convert to boolean
+        friend: user.isFriend === 1,  
+        friendRequestSent: user.friendRequestSent === 1  
       }));
     } catch (error) {
       console.error("Error in findByPhone:", error);
@@ -65,10 +65,10 @@ const contactModel = {
     }
   },
   
-  // Send a friend request
+  
   addContact: async (userId, contactId) => {
     try {
-      // Check if users exist
+      
       const userQuery = `
         SELECT UserID FROM user WHERE UserID IN (?, ?)
       `;
@@ -81,7 +81,7 @@ const contactModel = {
         };
       }
       
-      // Check if they are already contacts
+      
       const contactQuery = `
         SELECT * FROM contact 
         WHERE (UserID = ? AND ContactID = ?) OR (UserID = ? AND ContactID = ?)
@@ -95,7 +95,7 @@ const contactModel = {
       };
     }
 
-      // Check if there's already a pending request
+      
       const requestQuery = `
         SELECT n.NotificationID 
         FROM notification n
@@ -111,7 +111,7 @@ const contactModel = {
 };
       }
 
-      // Create notification
+      
       const notificationQuery = `
         INSERT INTO notification (Type, Sender, Receiver, CreatedAt, Details)
         VALUES ('friend_request', ?, ?, NOW(), '{}')
@@ -120,7 +120,7 @@ const contactModel = {
 
       const notificationId = notificationResult.insertId;
 
-      // Create friend request
+      
       const friendRequestQuery = `
         INSERT INTO friendrequest (NotificationID, Status)
         VALUES (?, 'pending')
@@ -137,7 +137,7 @@ const contactModel = {
     }
   },
 
-  // List all friend requests for a user
+  
   listRequests: async (userId) => {
     try {
       const query = `
@@ -168,18 +168,15 @@ const contactModel = {
     }
   },
 
-  // Accept a friend request
-  // Accept a friend request with two-way check
-  // Accept a friend request with two-way check and create a chat
   acceptRequest: async (userId, senderId) => {
-    // Get a connection from the pool
+    
     const connection = await pool.getConnection();
 
     try {
-      // Begin transaction
+      
       await connection.beginTransaction();
 
-      // Find the request from sender to receiver
+      
       const incomingRequestQuery = `
           SELECT n.NotificationID
           FROM notification n
@@ -188,7 +185,7 @@ const contactModel = {
       `;
       const [incomingRequests] = await connection.execute(incomingRequestQuery, [senderId, userId]);
 
-      // Find the request from receiver to sender (if exists)
+      
       const outgoingRequestQuery = `
           SELECT n.NotificationID
           FROM notification n
@@ -208,7 +205,7 @@ const contactModel = {
 
       const incomingNotificationId = incomingRequests[0].NotificationID;
 
-      // Update incoming friend request status
+      
       const updateIncomingQuery = `
           UPDATE friendrequest
           SET Status = 'accepted'
@@ -216,7 +213,7 @@ const contactModel = {
       `;
       await connection.execute(updateIncomingQuery, [incomingNotificationId]);
 
-      // If there's also an outgoing request, update it too
+      
       if (outgoingRequests.length > 0) {
         const outgoingNotificationId = outgoingRequests[0].NotificationID;
 
@@ -228,7 +225,7 @@ const contactModel = {
         await connection.execute(updateOutgoingQuery, [outgoingNotificationId]);
       }
 
-      // Check if contact relationship already exists
+      
       const contactCheckQuery = `
           SELECT COUNT(*) as contactExists
           FROM contact
@@ -236,9 +233,9 @@ const contactModel = {
       `;
       const [contactCheck] = await connection.execute(contactCheckQuery, [userId, senderId, senderId, userId]);
 
-      // Only create contact relationship if it doesn't exist
+      
       if (contactCheck[0].contactExists === 0) {
-        // Create bidirectional contact relationship
+        
         const contactQuery = `
         INSERT INTO contact (UserID, ContactID, ContactName, Status)
         VALUES (?, ?, (SELECT Name FROM user WHERE UserID = ?), 'active'),
@@ -247,11 +244,11 @@ const contactModel = {
         await connection.execute(contactQuery, [userId, senderId, senderId, senderId, userId, userId]);
       }
 
-      // Create a chat ID by sorting the user IDs and joining with a hyphen
+      
       const userIds = [parseInt(userId), parseInt(senderId)].sort();
       const chatId = userIds.join('-');
 
-      // Check if chat already exists
+      
       const chatCheckQuery = `
       SELECT COUNT(*) as chatExists
       FROM chat
@@ -259,16 +256,16 @@ const contactModel = {
     `;
       const [chatCheck] = await connection.execute(chatCheckQuery, [chatId]);
 
-      // Only create chat if it doesn't exist
+      
       if (chatCheck[0].chatExists === 0) {
-        // Create a new chat
+        
         const createChatQuery = `
         INSERT INTO chat (ChatID, CreatedDate, Type, Status, Owner)
         VALUES (?, NOW(), 'private', 'active', ?)
       `;
         await connection.execute(createChatQuery, [chatId, userId]);
 
-        // Add both users as chat members
+        
         const addChatMembersQuery = `
         INSERT INTO chatmember (ChatID, UserID, Role, AddedTimestamp)
         VALUES (?, ?, 'member', NOW()),
@@ -277,10 +274,10 @@ const contactModel = {
         await connection.execute(addChatMembersQuery, [chatId, userId, chatId, senderId]);
       }
 
-      // Commit transaction
+      
       await connection.commit();
 
-      // Release connection back to pool
+      
       connection.release();
 
       return {
@@ -289,10 +286,10 @@ const contactModel = {
         chatId: chatId
       };
     } catch (error) {
-      // Rollback transaction in case of error
+      
       await connection.rollback();
 
-      // Release connection back to pool
+      
       connection.release();
 
       console.error("Error in acceptRequest:", error);
@@ -300,7 +297,100 @@ const contactModel = {
     }
   },
 
-  // List sent friend requests
+  denyRequest: async (userId, senderId) => {
+    try {
+      
+      const connection = await pool.getConnection();
+
+      try {
+        
+        await connection.beginTransaction();
+
+        
+        const incomingRequestQuery = `
+        SELECT n.NotificationID
+        FROM notification n
+        JOIN friendrequest fr ON n.NotificationID = fr.NotificationID
+        WHERE n.Sender = ? AND n.Receiver = ? AND fr.Status = 'pending'
+      `;
+        const [incomingRequests] = await connection.execute(incomingRequestQuery, [senderId, userId]);
+
+        
+        const outgoingRequestQuery = `
+        SELECT n.NotificationID
+        FROM notification n
+        JOIN friendrequest fr ON n.NotificationID = fr.NotificationID
+        WHERE n.Sender = ? AND n.Receiver = ? AND fr.Status = 'pending'
+      `;
+        const [outgoingRequests] = await connection.execute(outgoingRequestQuery, [userId, senderId]);
+
+        if (incomingRequests.length === 0 && outgoingRequests.length === 0) {
+          await connection.rollback();
+          connection.release();
+          return {
+            success: false,
+            message: "No friend requests found between these users"
+          };
+        }
+
+        
+        if (incomingRequests.length > 0) {
+          const incomingNotificationId = incomingRequests[0].NotificationID;
+
+          
+          const deleteIncomingRequestQuery = `
+          DELETE FROM friendrequest
+          WHERE NotificationID = ?
+        `;
+          await connection.execute(deleteIncomingRequestQuery, [incomingNotificationId]);
+
+          
+          const deleteIncomingNotificationQuery = `
+          DELETE FROM notification
+          WHERE NotificationID = ?
+        `;
+          await connection.execute(deleteIncomingNotificationQuery, [incomingNotificationId]);
+        }
+
+        
+        if (outgoingRequests.length > 0) {
+          const outgoingNotificationId = outgoingRequests[0].NotificationID;
+
+          
+          const deleteOutgoingRequestQuery = `
+          DELETE FROM friendrequest
+          WHERE NotificationID = ?
+        `;
+          await connection.execute(deleteOutgoingRequestQuery, [outgoingNotificationId]);
+
+          
+          const deleteOutgoingNotificationQuery = `
+          DELETE FROM notification
+          WHERE NotificationID = ?
+        `;
+          await connection.execute(deleteOutgoingNotificationQuery, [outgoingNotificationId]);
+        }
+
+        
+        await connection.commit();
+        connection.release();
+
+        return {
+          success: true,
+          message: "Friend request(s) removed successfully"
+        };
+      } catch (error) {
+        
+        await connection.rollback();
+        connection.release();
+        throw error;
+      }
+    } catch (error) {
+      console.error("Error in denyRequest:", error);
+      throw error;
+    }
+  },
+  
   listSentRequests: async (userId) => {
     try {
       const query = `

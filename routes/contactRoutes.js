@@ -8,5 +8,6 @@ router.get('/find', contactController.findByPhone);
 router.post('/add', contactController.addContact);
 router.get('/requests', contactController.listRequests);
 router.post('/accept', contactController.acceptRequest);
+router.post('/deny', contactController.denyRequest);
 router.get('/sent', contactController.listSentRequests);
 module.exports = router;

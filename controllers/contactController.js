@@ -1,7 +1,7 @@
 const ContactModel = require('../models/contactModel');
 const Controller = {};
 
-// List all contacts for a user
+
 Controller.listContacts = async (req, res) => {
   try {
     const userId = req.query.userId;
@@ -29,7 +29,7 @@ Controller.listContacts = async (req, res) => {
   }
 };
 
-// Find users by phone number (partial match)
+
 Controller.findByPhone = async (req, res) => {
   try {
     const phone = req.query.phone;
@@ -65,7 +65,7 @@ Controller.findByPhone = async (req, res) => {
   }
 };
 
-// Send a friend request
+
 Controller.addContact = async (req, res) => {
   try {
     const userId = req.query.userId;
@@ -101,7 +101,7 @@ Controller.addContact = async (req, res) => {
   }
 };
 
-// List all friend requests for a user
+
 Controller.listRequests = async (req, res) => {
   try {
     const userId = req.query.userId;
@@ -129,7 +129,7 @@ Controller.listRequests = async (req, res) => {
   }
 };
 
-// Accept a friend request
+
 Controller.acceptRequest = async (req, res) => {
   try {
     const userId = req.query.userId;
@@ -165,7 +165,42 @@ Controller.acceptRequest = async (req, res) => {
   }
 };
 
-// List sent friend requests
+
+Controller.denyRequest = async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    const senderId = req.query.senderId;
+
+    if (!userId || !senderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Both user ID and sender ID are required"
+      });
+    }
+
+    const result = await ContactModel.denyRequest(userId, senderId);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    console.error("Error denying friend request:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to deny friend request",
+      error: error.message
+    });
+  }
+};
+
 Controller.listSentRequests = async (req, res) => {
   try {
     const userId = req.query.userId;
