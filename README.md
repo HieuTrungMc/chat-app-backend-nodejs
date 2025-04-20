@@ -1,1 +1,1 @@
-# Bookstore Backend Project (NodeJS + TypeScript)
+# ChatApp Backend Project (NodeJS + TypeScript + Websocket + LiveKit ????!!!?!??!)
