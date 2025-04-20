@@ -6,7 +6,7 @@ const chatModel = {
     try {
       
       const query = `
-          SELECT c.ChatID, c.CreatedDate, c.Type, c.Status, c.Owner
+          SELECT c.ChatID, c.CreatedDate, c.Type, c.Status, c.Owner, c.ChatImage, c.ChatName
           FROM chat c
                    JOIN chatmember cm ON c.ChatID = cm.ChatID
           WHERE cm.UserID = ?
@@ -93,8 +93,8 @@ const chatModel = {
         
         return {
           ...chat,
-          chatName: chat.Type === 'private' ? 'Private Chat' : 'Group Chat',
-          imageUrl: '',
+          chatName: chat.Type === 'private' ? 'Private Chat' : chat.ChatName,
+          imageUrl: chat.ChatImage,
           otherUserId: members.length > 0 ? members[0].UserID : null,
           lastMessage: lastMessage
         };
@@ -121,7 +121,7 @@ const chatModel = {
     try {
       
       const chatQuery = `
-          SELECT c.ChatID, c.CreatedDate, c.Type, c.Status, c.Owner
+          SELECT c.ChatID, c.CreatedDate, c.Type, c.Status, c.Owner, c.ChatImage, c.ChatName
           FROM chat c
           WHERE c.ChatID = ?
       `;
@@ -199,7 +199,8 @@ const chatModel = {
         }
       } else {
         
-        chatName = `Group Chat ${chatId}`;
+        chatName = chat.ChatName;
+        imageUrl = chat.ChatImage;
       }
 
       return {
