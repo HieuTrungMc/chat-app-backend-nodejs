@@ -5,6 +5,7 @@ const expressWs = require('express-ws')
 const userRoute = require('./routes/index')
 const chatRoute = require('./routes/chatRoutes')
 const contactRoute = require('./routes/contactRoutes');
+const groupChatRoute = require('./routes/groupChatRoutes');
 
 const app = express()
 expressWs(app)
@@ -25,6 +26,7 @@ app.use(function (req, res, next) {
 app.use("/user", userRoute)
 app.use("/chat", chatRoute)
 app.use("/contact", contactRoute);
+app.use("/group", groupChatRoute);
 
 // WebSocket route - import and use it directly here
 require('./routes/websocketserver')(app)
