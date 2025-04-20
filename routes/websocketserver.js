@@ -8,10 +8,52 @@ const dbConnection = mysql.createConnection({
   database: process.env.SQL_DATABASE
 });
 
+// Helper function to notify group members
+const notifyGroupMembers = async (app, chatId, userId, notificationType, data) => {
+  try {
+    // Get all members of the group except the sender
+    dbConnection.query(
+      'SELECT UserID FROM chatmember WHERE ChatID = ? AND UserID != ?',
+      [chatId, userId],
+      (err, memberResults) => {
+        if (err) {
+          console.error('Error fetching group members:', err);
+          return;
+        }
+
+        console.log(`Found ${memberResults.length} members to notify about ${notificationType}`);
+
+        // Send notification to each member
+        memberResults.forEach(member => {
+          const memberId = member.UserID;
+          const targetWs = app.locals.userConnections.get(memberId);
+
+          if (targetWs && targetWs.readyState === 1) { // WebSocket.OPEN = 1
+            try {
+              targetWs.send(JSON.stringify({
+                type: notificationType,
+                chatId: chatId,
+                userId: userId,
+                ...data
+              }));
+              console.log(`${notificationType} notification sent to user ${memberId}`);
+            } catch (e) {
+              console.error(`Error sending notification to user ${memberId}:`, e);
+              app.locals.userConnections.delete(memberId);
+            }
+          }
+        });
+      }
+    );
+  } catch (error) {
+    console.error('Error in notifyGroupMembers:', error);
+  }
+};
+
 module.exports = (app) => {
   const userConnections = new Map();
 
-  
+
   app.locals.userConnections = userConnections;
 
   app.ws('/ws', (ws, req) => {
@@ -51,6 +93,519 @@ module.exports = (app) => {
           }
           case 'ping': {
             ws.send(JSON.stringify({ type: 'pong' }));
+            break;
+          }
+          case 'createGroup': {
+            const { name, description, initialMembers } = packet;
+            const userId = ws.userID;
+
+            if (!userId) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Not authenticated', originalType: 'createGroup' }));
+              return;
+            }
+
+            if (!name) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Group name is required', originalType: 'createGroup' }));
+              return;
+            }
+
+            // Generate a unique chat ID
+            const chatId = `group-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+            const createdDate = new Date();
+
+            // Create the group chat
+            dbConnection.query(
+              'INSERT INTO chat (ChatID, CreatedDate, Type, Status, Owner) VALUES (?, ?, ?, ?, ?)',
+              [chatId, createdDate, 'group', 'active', userId],
+              (err) => {
+                if (err) {
+                  console.error(err);
+                  ws.send(JSON.stringify({ type: 'error', message: 'Error creating group', originalType: 'createGroup' }));
+                  return;
+                }
+
+                // Add the owner as a member with 'admin' role
+                dbConnection.query(
+                  'INSERT INTO chatmember (ChatID, UserID, Role, AddedTimestamp) VALUES (?, ?, ?, ?)',
+                  [chatId, userId, 'admin', createdDate],
+                  (err) => {
+                    if (err) {
+                      console.error(err);
+                      ws.send(JSON.stringify({ type: 'error', message: 'Error adding owner to group', originalType: 'createGroup' }));
+                      return;
+                    }
+
+                    // Add initial members if provided
+                    if (initialMembers && initialMembers.length > 0) {
+                      const memberValues = initialMembers.map(memberId => [chatId, memberId, 'member', createdDate]);
+
+                      dbConnection.query(
+                        'INSERT INTO chatmember (ChatID, UserID, Role, AddedTimestamp) VALUES ?',
+                        [memberValues],
+                        (err) => {
+                          if (err) {
+                            console.error(err);
+                            ws.send(JSON.stringify({ type: 'error', message: 'Error adding members to group', originalType: 'createGroup' }));
+                            return;
+                          }
+
+                          // Notify the creator
+                          ws.send(JSON.stringify({
+                            type: 'ok',
+                            originalType: 'createGroup',
+                            chatId: chatId,
+                            name: name,
+                            description: description
+                          }));
+
+                          // Notify the members
+                          notifyGroupMembers(app, chatId, userId, 'groupCreated', {
+                            name: name,
+                            description: description,
+                            createdBy: userId
+                          });
+                        }
+                      );
+                    } else {
+                      // Notify the creator
+                      ws.send(JSON.stringify({
+                        type: 'ok',
+                        originalType: 'createGroup',
+                        chatId: chatId,
+                        name: name,
+                        description: description
+                      }));
+                    }
+                  }
+                );
+              }
+            );
+            break;
+          }
+          case 'addGroupMember': {
+            const { chatId, newMemberId } = packet;
+            const userId = ws.userID;
+
+            if (!userId) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Not authenticated', originalType: 'addGroupMember' }));
+              return;
+            }
+
+            if (!chatId || !newMemberId) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Chat ID and new member ID are required', originalType: 'addGroupMember' }));
+              return;
+            }
+
+            // Check if the user is an admin of the group
+            dbConnection.query(
+              'SELECT Role FROM chatmember WHERE ChatID = ? AND UserID = ?',
+              [chatId, userId],
+              (err, adminCheck) => {
+                if (err) {
+                  console.error(err);
+                  ws.send(JSON.stringify({ type: 'error', message: 'Database error', originalType: 'addGroupMember' }));
+                  return;
+                }
+
+                if (adminCheck.length === 0 || adminCheck[0].Role !== 'admin') {
+                  ws.send(JSON.stringify({ type: 'error', message: 'You don\'t have permission to add members', originalType: 'addGroupMember' }));
+                  return;
+                }
+
+                // Check if the chat is a group
+                dbConnection.query(
+                  'SELECT Type FROM chat WHERE ChatID = ?',
+                  [chatId],
+                  (err, chatType) => {
+                    if (err) {
+                      console.error(err);
+                      ws.send(JSON.stringify({ type: 'error', message: 'Database error', originalType: 'addGroupMember' }));
+                      return;
+                    }
+
+                    if (chatType.length === 0 || chatType[0].Type !== 'group') {
+                      ws.send(JSON.stringify({ type: 'error', message: 'This is not a group chat', originalType: 'addGroupMember' }));
+                      return;
+                    }
+
+                    // Check if the member is already in the group
+                    dbConnection.query(
+                      'SELECT UserID FROM chatmember WHERE ChatID = ? AND UserID = ?',
+                      [chatId, newMemberId],
+                      (err, memberCheck) => {
+                        if (err) {
+                          console.error(err);
+                          ws.send(JSON.stringify({ type: 'error', message: 'Database error', originalType: 'addGroupMember' }));
+                          return;
+                        }
+
+                        if (memberCheck.length > 0) {
+                          ws.send(JSON.stringify({ type: 'error', message: 'User is already a member of this group', originalType: 'addGroupMember' }));
+                          return;
+                        }
+
+                        // Add the new member
+                        dbConnection.query(
+                          'INSERT INTO chatmember (ChatID, UserID, Role, AddedTimestamp) VALUES (?, ?, ?, ?)',
+                          [chatId, newMemberId, 'member', new Date()],
+                          (err) => {
+                            if (err) {
+                              console.error(err);
+                              ws.send(JSON.stringify({ type: 'error', message: 'Error adding member to group', originalType: 'addGroupMember' }));
+                              return;
+                            }
+
+                            // Notify the admin
+                            ws.send(JSON.stringify({
+                              type: 'ok',
+                              originalType: 'addGroupMember',
+                              chatId: chatId,
+                              newMemberId: newMemberId
+                            }));
+
+                            // Notify the group members
+                            notifyGroupMembers(app, chatId, userId, 'memberAdded', {
+                              newMemberId: newMemberId,
+                              addedBy: userId
+                            });
+
+                            // Notify the new member if they're online
+                            const newMemberWs = userConnections.get(newMemberId);
+                            if (newMemberWs && newMemberWs.readyState === 1) {
+                              newMemberWs.send(JSON.stringify({
+                                type: 'addedToGroup',
+                                chatId: chatId,
+                                addedBy: userId
+                              }));
+                            }
+                          }
+                        );
+                      }
+                    );
+                  }
+                );
+              }
+            );
+            break;
+          }
+          case 'removeGroupMember': {
+            const { chatId, memberToRemoveId } = packet;
+            const userId = ws.userID;
+
+            if (!userId) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Not authenticated', originalType: 'removeGroupMember' }));
+              return;
+            }
+
+            if (!chatId || !memberToRemoveId) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Chat ID and member ID are required', originalType: 'removeGroupMember' }));
+              return;
+            }
+
+            // Check if the user is an admin of the group or is removing themselves
+            dbConnection.query(
+              'SELECT Role FROM chatmember WHERE ChatID = ? AND UserID = ?',
+              [chatId, userId],
+              (err, adminCheck) => {
+                if (err) {
+                  console.error(err);
+                  ws.send(JSON.stringify({ type: 'error', message: 'Database error', originalType: 'removeGroupMember' }));
+                  return;
+                }
+
+                if (adminCheck.length === 0) {
+                  ws.send(JSON.stringify({ type: 'error', message: 'You are not a member of this group', originalType: 'removeGroupMember' }));
+                  return;
+                }
+
+                const isAdmin = adminCheck[0].Role === 'admin';
+                const isSelfRemoval = userId === memberToRemoveId;
+
+                if (!isAdmin && !isSelfRemoval) {
+                  ws.send(JSON.stringify({ type: 'error', message: 'You don\'t have permission to remove members', originalType: 'removeGroupMember' }));
+                  return;
+                }
+
+                // Check if the chat is a group
+                dbConnection.query(
+                  'SELECT Type, Owner FROM chat WHERE ChatID = ?',
+                  [chatId],
+                  (err, chatType) => {
+                    if (err) {
+                      console.error(err);
+                      ws.send(JSON.stringify({ type: 'error', message: 'Database error', originalType: 'removeGroupMember' }));
+                      return;
+                    }
+
+                    if (chatType.length === 0 || chatType[0].Type !== 'group') {
+                      ws.send(JSON.stringify({ type: 'error', message: 'This is not a group chat', originalType: 'removeGroupMember' }));
+                      return;
+                    }
+
+                    // Prevent removing the owner
+                    if (chatType[0].Owner === memberToRemoveId) {
+                      ws.send(JSON.stringify({ type: 'error', message: 'Cannot remove the group owner', originalType: 'removeGroupMember' }));
+                      return;
+                    }
+
+                    // Check if the member is in the group
+                    dbConnection.query(
+                      'SELECT UserID FROM chatmember WHERE ChatID = ? AND UserID = ?',
+                      [chatId, memberToRemoveId],
+                      (err, memberCheck) => {
+                        if (err) {
+                          console.error(err);
+                          ws.send(JSON.stringify({ type: 'error', message: 'Database error', originalType: 'removeGroupMember' }));
+                          return;
+                        }
+
+                        if (memberCheck.length === 0) {
+                          ws.send(JSON.stringify({ type: 'error', message: 'User is not a member of this group', originalType: 'removeGroupMember' }));
+                          return;
+                        }
+
+                        // Remove the member
+                        dbConnection.query(
+                          'DELETE FROM chatmember WHERE ChatID = ? AND UserID = ?',
+                          [chatId, memberToRemoveId],
+                          (err) => {
+                            if (err) {
+                              console.error(err);
+                              ws.send(JSON.stringify({ type: 'error', message: 'Error removing member from group', originalType: 'removeGroupMember' }));
+                              return;
+                            }
+
+                            // Notify the requester
+                            ws.send(JSON.stringify({
+                              type: 'ok',
+                              originalType: 'removeGroupMember',
+                              chatId: chatId,
+                              memberToRemoveId: memberToRemoveId
+                            }));
+
+                            // Notify the group members
+                            notifyGroupMembers(app, chatId, userId, 'memberRemoved', {
+                              removedMemberId: memberToRemoveId,
+                              removedBy: userId
+                            });
+
+                            // Notify the removed member if they're online
+                            const removedMemberWs = userConnections.get(memberToRemoveId);
+                            if (removedMemberWs && removedMemberWs.readyState === 1) {
+                              removedMemberWs.send(JSON.stringify({
+                                type: 'removedFromGroup',
+                                chatId: chatId,
+                                removedBy: userId
+                              }));
+                            }
+                          }
+                        );
+                      }
+                    );
+                  }
+                );
+              }
+            );
+            break;
+          }
+          case 'changeGroupRole': {
+            const { chatId, memberToChangeId, newRole } = packet;
+            const userId = ws.userID;
+
+            if (!userId) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Not authenticated', originalType: 'changeGroupRole' }));
+              return;
+            }
+
+            if (!chatId || !memberToChangeId || !newRole) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Chat ID, member ID, and new role are required', originalType: 'changeGroupRole' }));
+              return;
+            }
+
+            // Validate the role
+            if (newRole !== 'admin' && newRole !== 'member') {
+              ws.send(JSON.stringify({ type: 'error', message: 'Invalid role. Must be "admin" or "member"', originalType: 'changeGroupRole' }));
+              return;
+            }
+
+            // Check if the user is an admin of the group
+            dbConnection.query(
+              'SELECT Role FROM chatmember WHERE ChatID = ? AND UserID = ?',
+              [chatId, userId],
+              (err, adminCheck) => {
+                if (err) {
+                  console.error(err);
+                  ws.send(JSON.stringify({ type: 'error', message: 'Database error', originalType: 'changeGroupRole' }));
+                  return;
+                }
+
+                if (adminCheck.length === 0 || adminCheck[0].Role !== 'admin') {
+                  ws.send(JSON.stringify({ type: 'error', message: 'You don\'t have permission to change roles', originalType: 'changeGroupRole' }));
+                  return;
+                }
+
+                // Check if the chat is a group
+                dbConnection.query(
+                  'SELECT Type FROM chat WHERE ChatID = ?',
+                  [chatId],
+                  (err, chatType) => {
+                    if (err) {
+                      console.error(err);
+                      ws.send(JSON.stringify({ type: 'error', message: 'Database error', originalType: 'changeGroupRole' }));
+                      return;
+                    }
+
+                    if (chatType.length === 0 || chatType[0].Type !== 'group') {
+                      ws.send(JSON.stringify({ type: 'error', message: 'This is not a group chat', originalType: 'changeGroupRole' }));
+                      return;
+                    }
+
+                    // Check if the member is in the group
+                    dbConnection.query(
+                      'SELECT UserID FROM chatmember WHERE ChatID = ? AND UserID = ?',
+                      [chatId, memberToChangeId],
+                      (err, memberCheck) => {
+                        if (err) {
+                          console.error(err);
+                          ws.send(JSON.stringify({ type: 'error', message: 'Database error', originalType: 'changeGroupRole' }));
+                          return;
+                        }
+
+                        if (memberCheck.length === 0) {
+                          ws.send(JSON.stringify({ type: 'error', message: 'User is not a member of this group', originalType: 'changeGroupRole' }));
+                          return;
+                        }
+
+                        // Change the role
+                        dbConnection.query(
+                          'UPDATE chatmember SET Role = ? WHERE ChatID = ? AND UserID = ?',
+                          [newRole, chatId, memberToChangeId],
+                          (err) => {
+                            if (err) {
+                              console.error(err);
+                              ws.send(JSON.stringify({ type: 'error', message: 'Error changing role', originalType: 'changeGroupRole' }));
+                              return;
+                            }
+
+                            // Notify the requester
+                            ws.send(JSON.stringify({
+                              type: 'ok',
+                              originalType: 'changeGroupRole',
+                              chatId: chatId,
+                              memberToChangeId: memberToChangeId,
+                              newRole: newRole
+                            }));
+
+                            // Notify the group members
+                            notifyGroupMembers(app, chatId, userId, 'roleChanged', {
+                              memberId: memberToChangeId,
+                              newRole: newRole,
+                              changedBy: userId
+                            });
+
+                            // Notify the member whose role was changed if they're online
+                            const changedMemberWs = userConnections.get(memberToChangeId);
+                            if (changedMemberWs && changedMemberWs.readyState === 1) {
+                              changedMemberWs.send(JSON.stringify({
+                                type: 'roleChanged',
+                                chatId: chatId,
+                                newRole: newRole,
+                                changedBy: userId
+                              }));
+                            }
+                          }
+                        );
+                      }
+                    );
+                  }
+                );
+              }
+            );
+            break;
+          }
+          case 'disbandGroup': {
+            const { chatId } = packet;
+            const userId = ws.userID;
+
+            if (!userId) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Not authenticated', originalType: 'disbandGroup' }));
+              return;
+            }
+
+            if (!chatId) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Chat ID is required', originalType: 'disbandGroup' }));
+              return;
+            }
+
+            // Check if the user is the owner of the group
+            dbConnection.query(
+              'SELECT Owner FROM chat WHERE ChatID = ? AND Type = ?',
+              [chatId, "group"],
+              (err, ownerCheck) => {
+                if (err) {
+                  console.error(err);
+                  ws.send(JSON.stringify({ type: 'error', message: 'Database error', originalType: 'disbandGroup' }));
+                  return;
+                }
+
+                if (ownerCheck.length === 0) {
+                  ws.send(JSON.stringify({ type: 'error', message: 'Group not found', originalType: 'disbandGroup' }));
+                  return;
+                }
+
+                if (ownerCheck[0].Owner !== userId) {
+                  ws.send(JSON.stringify({ type: 'error', message: 'Only the group owner can disband the group', originalType: 'disbandGroup' }));
+                  return;
+                }
+
+                // Get all members before disbanding
+                dbConnection.query(
+                  'SELECT UserID FROM chatmember WHERE ChatID = ?',
+                  [chatId],
+                  (err, members) => {
+                    if (err) {
+                      console.error(err);
+                      ws.send(JSON.stringify({ type: 'error', message: 'Database error', originalType: 'disbandGroup' }));
+                      return;
+                    }
+
+                    // Update the chat status to 'disbanded'
+                    dbConnection.query(
+                      'UPDATE chat SET Status = ? WHERE ChatID = ?',
+                      [chatId, "disbanded"],
+                      (err) => {
+                        if (err) {
+                          console.error(err);
+                          ws.send(JSON.stringify({ type: 'error', message: 'Error disbanding group', originalType: 'disbandGroup' }));
+                          return;
+                        }
+
+                        // Notify the requester
+                        ws.send(JSON.stringify({
+                          type: 'ok',
+                          originalType: 'disbandGroup',
+                          chatId: chatId
+                        }));
+
+                        // Notify all members
+                        members.forEach(member => {
+                          if (member.UserID !== userId) { // Don't notify the owner again
+                            const memberWs = userConnections.get(member.UserID);
+                            if (memberWs && memberWs.readyState === 1) {
+                              memberWs.send(JSON.stringify({
+                                type: 'groupDisbanded',
+                                chatId: chatId,
+                                disbandedBy: userId
+                              }));
+                            }
+                          }
+                        });
+                      }
+                    );
+                  }
+                );
+              }
+            );
             break;
           }
           case 'joinChat': {
@@ -202,13 +757,13 @@ module.exports = (app) => {
 
                                       console.log(`Found ${memberResults.length} other members to notify`);
 
-                                      
+
                                       memberResults.forEach(member => {
                                         const memberId = member.UserID;
                                         console.log(`Attempting to send message to user: ${memberId}`);
 
                                         const targetWs = userConnections.get(memberId);
-                                        
+
 
                                         if (targetWs && targetWs.readyState === 1) { 
                                           console.log(`Connection found for user ${memberId}, sending message`);
@@ -217,11 +772,13 @@ module.exports = (app) => {
                                             type: 'receiveChat',
                                             chatId: chatId,
                                             message: {
+                                              ...messagePayload,
                                               messageId,
                                               type,
                                               content,
                                               senderId: userId,
                                               timestamp: timestamp
+
                                             }
                                           };
 
@@ -230,8 +787,8 @@ module.exports = (app) => {
                                             console.log(`Message sent successfully to user ${memberId}`);
                                           } catch (e) {
                                             console.error(`Error sending message to user ${memberId}:`, e);
-                                            
-                                            
+
+
                                             userConnections.delete(memberId);
                                           }
                                         } else {
@@ -257,7 +814,7 @@ module.exports = (app) => {
                                   return;
                                 }
                                 messagePayload.messageId = messageId
-                                
+
                                 ws.send(JSON.stringify({
                                   type: 'ok',
                                   originalType: 'sendChat',
@@ -265,7 +822,7 @@ module.exports = (app) => {
                                   messagePayload: messagePayload
                                 }));
 
-                                
+
                                 dbConnection.query(
                                     'SELECT UserID FROM chatmember WHERE ChatID = ? AND UserID != ?',
                                     [chatId, userId],
@@ -277,7 +834,7 @@ module.exports = (app) => {
 
                                       console.log(`Found ${memberResults.length} other members to notify for attachment`);
 
-                                      
+
                                       memberResults.forEach(member => {
                                         const memberId = member.UserID
                                         console.log(`Attempting to send attachment message to user: ${memberId}`);
@@ -292,6 +849,7 @@ module.exports = (app) => {
                                               type: 'receiveChat',
                                               chatId: chatId,
                                               message: {
+                                                ...messagePayload,
                                                 messageId,
                                                 type,
                                                 content,
@@ -335,11 +893,11 @@ module.exports = (app) => {
 
     ws.on('error', (error) => {
       console.error('WebSocket error:', error);
-      
+
     });
 
     ws.on('close', () => {
-      
+
       if (ws.userID && userConnections.get(ws.userID) === ws) {
         userConnections.delete(ws.userID);
         console.log(`User ${ws.userID} disconnected`);
@@ -347,7 +905,7 @@ module.exports = (app) => {
       }
     });
 
-    
+
     const pingInterval = setInterval(() => {
       if (ws.readyState === 1) { 
         try {
@@ -361,13 +919,13 @@ module.exports = (app) => {
       }
     }, 30000); 
 
-    
+
     ws.on('close', () => {
       clearInterval(pingInterval);
     });
   });
 
-  
+
   setInterval(() => {
     console.log('Checking for stale connections...');
     userConnections.forEach((ws, userId) => {
