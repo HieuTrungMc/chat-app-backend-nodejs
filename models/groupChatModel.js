@@ -19,7 +19,7 @@ const groupChatModel = {
         INSERT INTO chatmember (ChatID, UserID, Role, AddedTimestamp)
         VALUES (?, ?, ?, ?)
       `;
-      await pool.execute(addOwnerQuery, [chatId, ownerId, 'admin', createdDate]);
+      await pool.execute(addOwnerQuery, [chatId, ownerId, 'owner', createdDate]);
       
       // Add initial members if provided
       if (initialMembers.length > 0) {
@@ -72,7 +72,7 @@ const groupChatModel = {
       `;
       const [adminCheck] = await pool.execute(adminCheckQuery, [chatId, userId]);
       
-      if (adminCheck.length === 0 || adminCheck[0].Role !== 'admin') {
+      if (adminCheck.length === 0 || adminCheck[0].Role !== 'admin' || adminCheck[0].Role !== 'owner') {
         return {
           success: false,
           message: "You don't have permission to add members to this group"
@@ -166,7 +166,7 @@ const groupChatModel = {
       `;
       const [adminCheck] = await pool.execute(adminCheckQuery, [chatId, userId]);
       
-      if (adminCheck.length === 0 || adminCheck[0].Role !== 'admin') {
+      if (adminCheck.length === 0 || adminCheck[0].Role !== 'admin' ||  adminCheck[0].Role !== 'owner') {
         // Allow users to remove themselves
         if (userId !== memberToRemoveId) {
           return {
@@ -241,7 +241,7 @@ const groupChatModel = {
       `;
       const [adminCheck] = await pool.execute(adminCheckQuery, [chatId, userId]);
       
-      if (adminCheck.length === 0 || adminCheck[0].Role !== 'admin') {
+      if (adminCheck.length === 0 || !["admin", "owner"].includes(adminCheck[0].Role)) {
         return {
           success: false,
           message: "You don't have permission to change roles in this group"
@@ -279,7 +279,7 @@ const groupChatModel = {
       }
       
       // Validate the role
-      if (newRole !== 'admin' && newRole !== 'member') {
+      if (newRole !== 'admin' && newRole !== 'member' && newRole !== 'owner') {
         return {
           success: false,
           message: "Invalid role. Must be 'admin' or 'member'"
@@ -398,6 +398,63 @@ const groupChatModel = {
       };
     } catch (error) {
       console.error("Error in getGroupMembers:", error);
+      throw error;
+    }
+  },
+
+  leaveGroup: async (chatId, userId) => {
+    try {
+      // Check if the chat is a group
+      const chatTypeQuery = `
+      SELECT Type, Owner
+      FROM chat
+      WHERE ChatID = ?
+    `;
+      const [chatType] = await pool.execute(chatTypeQuery, [chatId]);
+
+      if (chatType.length === 0 || chatType[0].Type !== 'group') {
+        return {
+          success: false,
+          message: "This is not a group chat"
+        };
+      }
+
+      // Check if the user is a member of the group
+      const memberCheckQuery = `
+      SELECT COUNT(*) as isMember
+      FROM chatmember
+      WHERE ChatID = ? AND UserID = ?
+    `;
+      const [memberCheck] = await pool.execute(memberCheckQuery, [chatId, userId]);
+
+      if (memberCheck[0].isMember === 0) {
+        return {
+          success: false,
+          message: "You are not a member of this group"
+        };
+      }
+
+      // Check if the user is the owner of the group
+      if (chatType[0].Owner === userId) {
+        return {
+          success: false,
+          message: "You are the owner, you should transfer owner to someone or strike the delete button!."
+        };
+      }
+
+      // Remove the user from the group
+      const leaveGroupQuery = `
+      DELETE FROM chatmember
+      WHERE ChatID = ? AND UserID = ?
+    `;
+      await pool.execute(leaveGroupQuery, [chatId, userId]);
+
+      return {
+        success: true,
+        message: "You have left the group successfully"
+      };
+    } catch (error) {
+      console.error("Error in leaveGroup:", error);
       throw error;
     }
   }

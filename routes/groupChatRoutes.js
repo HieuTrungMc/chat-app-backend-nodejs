@@ -13,5 +13,6 @@ router.post('/member/role', groupChatController.changeRole);
 // Group management
 router.post('/disband', groupChatController.disbandGroup);
 router.get('/:chatId/members', groupChatController.getGroupMembers);
+router.post('/leave', groupChatController.leaveGroup);
 
 module.exports = router;

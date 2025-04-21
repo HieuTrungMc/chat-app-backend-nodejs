@@ -169,4 +169,32 @@ Controller.getGroupMembers = async (req, res) => {
   }
 };
 
+Controller.leaveGroup = async (req, res) => {
+  try {
+    const { chatId, userId } = req.body;
+
+    if (!chatId || !userId) {
+      return res.status(400).json({
+        success: false,
+        message: "Chat ID and user ID are required"
+      });
+    }
+
+    const result = await GroupChatModel.leaveGroup(chatId, userId);
+
+    if (!result.success) {
+      return res.status(403).json(result);
+    }
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("Error leaving group:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to leave group",
+      error: error.message
+    });
+  }
+};
+
 module.exports = Controller;
