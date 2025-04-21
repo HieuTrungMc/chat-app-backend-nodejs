@@ -72,7 +72,7 @@ const groupChatModel = {
       `;
       const [adminCheck] = await pool.execute(adminCheckQuery, [chatId, userId]);
       
-      if (adminCheck.length === 0 || adminCheck[0].Role !== 'admin' || adminCheck[0].Role !== 'owner') {
+      if (adminCheck.length === 0 || !(["admin", "owner"].includes(adminCheck[0].Role))) {
         return {
           success: false,
           message: "You don't have permission to add members to this group"
@@ -166,7 +166,7 @@ const groupChatModel = {
       `;
       const [adminCheck] = await pool.execute(adminCheckQuery, [chatId, userId]);
       
-      if (adminCheck.length === 0 || adminCheck[0].Role !== 'admin' ||  adminCheck[0].Role !== 'owner') {
+      if (adminCheck.length === 0 || !(["admin", "owner"].includes(adminCheck[0].Role))) {
         // Allow users to remove themselves
         if (userId !== memberToRemoveId) {
           return {
@@ -241,7 +241,7 @@ const groupChatModel = {
       `;
       const [adminCheck] = await pool.execute(adminCheckQuery, [chatId, userId]);
       
-      if (adminCheck.length === 0 || !["admin", "owner"].includes(adminCheck[0].Role)) {
+      if (adminCheck.length === 0 || !(["admin", "owner"].includes(adminCheck[0].Role))) {
         return {
           success: false,
           message: "You don't have permission to change roles in this group"
