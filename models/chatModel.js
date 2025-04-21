@@ -420,9 +420,67 @@ const chatModel = {
       console.error("Error in deleteMessage:", error);
       throw error;
     }
+  },
+
+  getOrCreatePrivateChat: async (userIdA, userIdB) => {
+  try {
+    // First, check if a private chat already exists between these users
+    // Private chats typically have a ChatID format like "private-userA-userB" or similar
+    const findChatQuery = `
+      SELECT c.ChatID
+      FROM chat c
+      JOIN chatmember cm1 ON c.ChatID = cm1.ChatID
+      JOIN chatmember cm2 ON c.ChatID = cm2.ChatID
+      WHERE c.Type = 'private'
+      AND cm1.UserID = ?
+      AND cm2.UserID = ?
+      AND c.Status = 'active'
+    `;
+    
+    const [existingChats] = await pool.execute(findChatQuery, [userIdA, userIdB]);
+    
+    if (existingChats.length > 0) {
+      // Chat already exists, return its ID
+      return {
+        success: true,
+        chatId: existingChats[0].ChatID,
+        isNew: false,
+        message: "Existing chat found"
+      };
+    }
+    
+    // No chat exists, create a new one
+    const chatId = `private-${userIdA}-${userIdB}-${Date.now()}`;
+    const createdDate = new Date();
+    
+    // Create the chat
+    const createChatQuery = `
+      INSERT INTO chat (ChatID, CreatedDate, Type, Status, Owner)
+      VALUES (?, ?, 'private', 'active', ?)
+    `;
+    await pool.execute(createChatQuery, [chatId, createdDate, userIdA]);
+    
+    // Add both users as members
+    const addMembersQuery = `
+      INSERT INTO chatmember (ChatID, UserID, Role, AddedTimestamp)
+      VALUES (?, ?, 'member', ?), (?, ?, 'member', ?)
+    `;
+    await pool.execute(addMembersQuery, [
+      chatId, userIdA, createdDate,
+      chatId, userIdB, createdDate
+    ]);
+    
+    return {
+      success: true,
+      chatId: chatId,
+      isNew: true,
+      message: "New private chat created"
+    };
+  } catch (error) {
+    console.error("Error in getOrCreatePrivateChat:", error);
+    throw error;
   }
-
-
+}
 };
 
 module.exports = chatModel;

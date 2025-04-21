@@ -12,5 +12,5 @@ router.get('/:chatId/info', chatController.getChatInfo)
 router.get('/:chatId/history/:count', chatController.getChatHistory)
 router.get('/:chatId/search', chatController.searchMessages)
 router.post('/deleteMsg', chatController.deleteMessage)
-
+router.get('/private', chatController.getOrCreatePrivateChat);
 module.exports = router;

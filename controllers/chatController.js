@@ -203,4 +203,30 @@ Controller.deleteMessage = async (req, res) => {
   }
 };
 
+Controller.getOrCreatePrivateChat = async (req, res) => {
+  try {
+    const { userIdA, userIdB } = req.query;
+    
+    if (!userIdA || !userIdB) {
+      return res.status(400).json({
+        success: false,
+        message: "Both user IDs are required"
+      });
+    }
+    
+    const result = await ChatModel.getOrCreatePrivateChat(userIdA, userIdB);
+    
+    return res.status(200).json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error("Error getting or creating private chat:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get or create private chat",
+      error: error.message
+    });
+  }
+};
 module.exports = Controller;
