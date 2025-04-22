@@ -457,6 +457,55 @@ const groupChatModel = {
       console.error("Error in leaveGroup:", error);
       throw error;
     }
+  },
+  renameGroup: async (chatId, userId, newName) => {
+    try {
+      // Kiểm tra xem người dùng có quyền admin hoặc owner không
+      const adminCheckQuery = `
+      SELECT Role
+      FROM chatmember
+      WHERE ChatID = ? AND UserID = ?
+    `;
+      const [adminCheck] = await pool.execute(adminCheckQuery, [chatId, userId]);
+
+      if (adminCheck.length === 0 || !(["admin", "owner"].includes(adminCheck[0].Role))) {
+        return {
+          success: false,
+          message: "You don't have permission to rename this group"
+        };
+      }
+
+      // Kiểm tra xem chat có phải là nhóm không
+      const chatTypeQuery = `
+      SELECT Type
+      FROM chat
+      WHERE ChatID = ?
+    `;
+      const [chatType] = await pool.execute(chatTypeQuery, [chatId]);
+
+      if (chatType.length === 0 || chatType[0].Type !== 'group') {
+        return {
+          success: false,
+          message: "This is not a group chat"
+        };
+      }
+
+      // Đổi tên nhóm
+      const renameGroupQuery = `
+      UPDATE chat
+      SET ChatName = ?
+      WHERE ChatID = ?
+    `;
+      await pool.execute(renameGroupQuery, [newName, chatId]);
+
+      return {
+        success: true,
+        message: "Group renamed successfully"
+      };
+    } catch (error) {
+      console.error("Error in renameGroup:", error);
+      throw error;
+    }
   }
 };
 

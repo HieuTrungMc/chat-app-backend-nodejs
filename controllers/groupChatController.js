@@ -197,4 +197,32 @@ Controller.leaveGroup = async (req, res) => {
   }
 };
 
+Controller.renameGroup = async (req, res) => {
+  try {
+    const { chatId, userId, newName } = req.body;
+
+    if (!chatId || !userId || !newName) {
+      return res.status(400).json({
+        success: false,
+        message: "Chat ID, user ID, and new name are required"
+      });
+    }
+
+    const result = await GroupChatModel.renameGroup(chatId, userId, newName);
+
+    if (!result.success) {
+      return res.status(403).json(result);
+    }
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("Error renaming group:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to rename group",
+      error: error.message
+    });
+  }
+};
+
 module.exports = Controller;
