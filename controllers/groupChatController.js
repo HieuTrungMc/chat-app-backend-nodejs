@@ -225,4 +225,33 @@ Controller.renameGroup = async (req, res) => {
   }
 };
 
+Controller.updateGroupImage = async (req, res) => {
+  try {
+    const chatId = req.params.chatId;
+    const { userId, image } = req.body;
+
+    if (!chatId || !userId || !image) {
+      return res.status(400).json({
+        success: false,
+        message: "Chat ID, user ID, and image URL are required"
+      });
+    }
+
+    const result = await GroupChatModel.updateGroupImage(chatId, userId, image);
+
+    if (!result.success) {
+      return res.status(403).json(result);
+    }
+
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error("Error updating group image:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update group image",
+      error: error.message
+    });
+  }
+};
+
 module.exports = Controller;

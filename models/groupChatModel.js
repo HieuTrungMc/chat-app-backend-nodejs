@@ -506,6 +506,56 @@ const groupChatModel = {
       console.error("Error in renameGroup:", error);
       throw error;
     }
+  },
+
+  updateGroupImage: async (chatId, userId, imageUrl) => {
+    try {
+      // Check if the user is an admin or owner of the group
+      const adminCheckQuery = `
+        SELECT Role
+        FROM chatmember
+        WHERE ChatID = ? AND UserID = ?
+      `;
+      const [adminCheck] = await pool.execute(adminCheckQuery, [chatId, userId]);
+
+      if (adminCheck.length === 0 || !(["admin", "owner"].includes(adminCheck[0].Role))) {
+        return {
+          success: false,
+          message: "You don't have permission to update this group's image"
+};
+      }
+
+      // Check if the chat is a group
+      const chatTypeQuery = `
+        SELECT Type
+        FROM chat
+        WHERE ChatID = ?
+      `;
+      const [chatType] = await pool.execute(chatTypeQuery, [chatId]);
+
+      if (chatType.length === 0 || chatType[0].Type !== 'group') {
+        return {
+          success: false,
+          message: "This is not a group chat"
+        };
+      }
+
+      // Update the group image
+      const updateImageQuery = `
+        UPDATE chat
+        SET ChatImage = ?
+        WHERE ChatID = ?
+      `;
+      await pool.execute(updateImageQuery, [imageUrl, chatId]);
+
+      return {
+        success: true,
+        message: "Group image updated successfully"
+      };
+    } catch (error) {
+      console.error("Error in updateGroupImage:", error);
+      throw error;
+    }
   }
 };
 

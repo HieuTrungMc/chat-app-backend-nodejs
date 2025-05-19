@@ -15,4 +15,6 @@ router.post('/disband', groupChatController.disbandGroup);
 router.get('/:chatId/members', groupChatController.getGroupMembers);
 router.post('/leave', groupChatController.leaveGroup);
 router.post('/rename', groupChatController.renameGroup);
+router.post('/:chatId/updateimage', groupChatController.updateGroupImage); // New route for updating group image
+
 module.exports = router;
