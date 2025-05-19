@@ -133,6 +133,40 @@ Controller.searchMessages = async (req, res) => {
   }
 };
 
+Controller.searchChatsByName = async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    const searchQuery = req.query.query;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "User ID is required"
+      });
+    }
+
+    if (!searchQuery) {
+      return res.status(400).json({
+        success: false,
+        message: "Search query is required"
+      });
+    }
+
+    const chats = await ChatModel.searchChatsByName(userId, searchQuery);
+    return res.status(200).json({
+      success: true,
+      data: chats
+    });
+  } catch (error) {
+    console.error("Error searching chats:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to search chats",
+      error: error.message
+    });
+  }
+};
+
 Controller.deleteMessage = async (req, res) => {
   try {
     const messageId = req.query.messageId;
@@ -144,7 +178,7 @@ Controller.deleteMessage = async (req, res) => {
         message: "Message ID is required"
       });
     }
-
+    
     if (!deleteType) {
       return res.status(400).json({
         success: false,
@@ -155,10 +189,10 @@ Controller.deleteMessage = async (req, res) => {
     // Validate delete type
     if (deleteType !== 'remove' && deleteType !== 'unsent') {
       return res.status(400).json({
-        success: false,
+      success: false,
         message: "Invalid delete type. Must be 'remove' or 'unsent'"
-      });
-    }
+    });
+  }
 
     // Process the message deletion
     const result = await ChatModel.deleteMessage(messageId, deleteType);
@@ -175,7 +209,7 @@ Controller.deleteMessage = async (req, res) => {
         type: "changeMessageType",
         msgId: messageId,
         deleteType: deleteType
-      };
+};
       app.locals.userConnections.forEach((ws, userId) => {
         if (ws.readyState === 1) { // WebSocket.OPEN = 1
           try {
@@ -206,16 +240,16 @@ Controller.deleteMessage = async (req, res) => {
 Controller.getOrCreatePrivateChat = async (req, res) => {
   try {
     const { userIdA, userIdB } = req.query;
-    
+
     if (!userIdA || !userIdB) {
       return res.status(400).json({
         success: false,
         message: "Both user IDs are required"
       });
     }
-    
+
     const result = await ChatModel.getOrCreatePrivateChat(userIdA, userIdB);
-    
+
     return res.status(200).json({
       success: true,
       data: result

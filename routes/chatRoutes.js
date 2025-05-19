@@ -6,6 +6,7 @@ const upload = require("../middleware/upload")
 // Basic chat routes
 router.get('/', chatController.getMainPath)
 router.get('/me', chatController.getUserChats)
+router.get('/search', chatController.searchChatsByName) // New route for searching chats
 
 // Chat specific routes
 router.get('/:chatId/info', chatController.getChatInfo)

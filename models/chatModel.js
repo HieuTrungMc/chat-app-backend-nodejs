@@ -480,7 +480,134 @@ const chatModel = {
     console.error("Error in getOrCreatePrivateChat:", error);
     throw error;
   }
+},
+
+  searchChatsByName: async (userId, searchQuery) => {
+    try {
+      // Query to search for chats by name where the user is a member
+      const query = `
+        SELECT c.ChatID, c.CreatedDate, c.Type, c.Status, c.Owner, c.ChatImage, c.ChatName
+        FROM chat c
+        JOIN chatmember cm ON c.ChatID = cm.ChatID
+        WHERE cm.UserID = ?
+          AND (
+            (c.Type = 'group' AND c.ChatName LIKE ?)
+            OR c.Type = 'private'
+          )
+        ORDER BY c.CreatedDate DESC
+      `;
+
+      const searchPattern = `%${searchQuery}%`;
+      const [chats] = await pool.execute(query, [userId, searchPattern]);
+
+      // For private chats, we need to check the other user's name
+      const enrichedChats = await Promise.all(chats.map(async (chat) => {
+        // Get other members in the chat
+        const membersQuery = `
+          SELECT UserID
+          FROM chatmember
+          WHERE ChatID = ? AND UserID != ?
+        `;
+        const [members] = await pool.execute(membersQuery, [chat.ChatID, userId]);
+
+        // Get latest message for each chat
+        const latestMessageQuery = `
+          SELECT m.MessageID, m.UserID, m.Type, m.Timestamp,
+                 CASE
+                   WHEN m.Type = 'text' THEN tm.Content
+                   WHEN m.Type = 'attachment' THEN am.Content
+                   ELSE NULL
+                 END as Content,
+                 CASE
+                   WHEN m.Type = 'attachment' THEN am.AttachmentUrl
+                   ELSE NULL
+                 END as AttachmentUrl,
+                 CASE
+                   WHEN m.Type = 'text' THEN tm.Type
+                   WHEN m.Type = 'attachment' THEN am.Type
+                   ELSE NULL
+                 END as DeleteType,
+                 u.Name as SenderName
+          FROM message m
+          LEFT JOIN textmessage tm ON m.MessageID = tm.MessageID
+          LEFT JOIN attachmentmessage am ON m.MessageID = am.MessageID
+          JOIN user u ON m.UserID = u.UserID
+          WHERE m.ChatID = ?
+          ORDER BY m.Timestamp DESC
+          LIMIT 1
+        `;
+        const [latestMessages] = await pool.execute(latestMessageQuery, [chat.ChatID]);
+        const lastMessage = latestMessages.length > 0 ? {
+          messageId: latestMessages[0].MessageID,
+          userId: latestMessages[0].UserID,
+          type: latestMessages[0].Type,
+          timestamp: latestMessages[0].Timestamp,
+          content: latestMessages[0].Content,
+          attachmentUrl: latestMessages[0].AttachmentUrl,
+          deleteType: latestMessages[0].DeleteType,
+          senderName: latestMessages[0].SenderName
+        } : null;
+
+        // For private chats, get the other user's details
+        if (chat.Type === 'private' && members.length > 0) {
+          const otherUserId = members[0].UserID;
+
+          try {
+            const userQuery = `
+              SELECT UserID as id, Name as name, ImageUrl as image
+              FROM user
+              WHERE UserID = ?
+            `;
+            const [users] = await pool.execute(userQuery, [otherUserId]);
+
+            if (users.length > 0) {
+              const otherUser = users[0];
+
+              // For private chats, only include if the other user's name matches the search query
+              if (searchQuery && chat.Type === 'private') {
+                if (!otherUser.name || !otherUser.name.toLowerCase().includes(searchQuery.toLowerCase())) {
+                  return null; // Skip this chat if name doesn't match
 }
+              }
+
+              return {
+                ...chat,
+                chatName: otherUser.name || 'Unknown User',
+                imageUrl: otherUser.image || '',
+                otherUserId: otherUserId,
+                lastMessage: lastMessage
+};
+            }
+          } catch (error) {
+            console.error(`Error fetching user ${otherUserId} details:`, error);
+          }
+        }
+
+        return {
+          ...chat,
+          chatName: chat.Type === 'private' ? 'Private Chat' : chat.ChatName,
+          imageUrl: chat.ChatImage,
+          otherUserId: members.length > 0 ? members[0].UserID : null,
+          lastMessage: lastMessage
+        };
+      }));
+
+      // Filter out null values (private chats that didn't match the search)
+      const filteredChats = enrichedChats.filter(chat => chat !== null);
+
+      // Sort by latest message
+      filteredChats.sort((a, b) => {
+        if (!a.lastMessage) return 1;
+        if (!b.lastMessage) return -1;
+        return new Date(b.lastMessage.timestamp) - new Date(a.lastMessage.timestamp);
+      });
+
+      return filteredChats;
+    } catch (error) {
+      console.error("Error in searchChatsByName:", error);
+      throw error;
+    }
+  }
 };
 
 module.exports = chatModel;
