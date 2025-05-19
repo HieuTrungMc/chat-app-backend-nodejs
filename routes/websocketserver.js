@@ -26,33 +26,93 @@ const notifyGroupMembers = async (app, chatId, userId, notificationType, data) =
         // Send notification to each member
         memberResults.forEach(member => {
           const memberId = member.UserID;
-          const targetWs = app.locals.userConnections.get(memberId);
+          const userConnections = app.locals.userConnections.get(memberId);
 
-          if (targetWs && targetWs.readyState === 1) { // WebSocket.OPEN = 1
-            try {
-              targetWs.send(JSON.stringify({
+          if (userConnections && userConnections.size > 0) {
+            console.log(`Sending ${notificationType} to ${userConnections.size} connections of user ${memberId}`);
+            
+            const deadConnections = [];
+            userConnections.forEach(conn => {
+              if (conn.readyState === 1) { // WebSocket.OPEN = 1
+                try {
+                  conn.send(JSON.stringify({
                 type: notificationType,
                 chatId: chatId,
                 userId: userId,
                 ...data
               }));
-              console.log(`${notificationType} notification sent to user ${memberId}`);
             } catch (e) {
-              console.error(`Error sending notification to user ${memberId}:`, e);
-              app.locals.userConnections.delete(memberId);
+                  console.error(`Error sending notification to a connection of user ${memberId}:`, e);
+                  deadConnections.push(conn);
+            }
+                    } else {
+                deadConnections.push(conn);
+              }
+            });
+            
+            // Clean up dead connections
+            if (deadConnections.length > 0) {
+              deadConnections.forEach(conn => userConnections.delete(conn));
+              console.log(`Removed ${deadConnections.length} dead connections for user ${memberId}`);
+              
+              // If no connections left, remove the user from the map
+              if (userConnections.size === 0) {
+                app.locals.userConnections.delete(memberId);
+                console.log(`Removed user ${memberId} from connections map (no active connections)`);
+              }
             }
           }
         });
       }
-    );
-  } catch (error) {
+                );
+      } catch (error) {
     console.error('Error in notifyGroupMembers:', error);
+      }
+};
+
+// Helper function to send message to a user's connections
+const sendToUserConnections = (app, userId, message) => {
+  const userConnections = app.locals.userConnections.get(userId);
+
+  if (!userConnections || userConnections.size === 0) {
+    return 0; // No connections
   }
+
+  let sentCount = 0;
+  const deadConnections = [];
+
+  userConnections.forEach(conn => {
+    if (conn.readyState === 1) { // WebSocket.OPEN = 1
+      try {
+        conn.send(JSON.stringify(message));
+        sentCount++;
+      } catch (e) {
+        console.error(`Error sending message to a connection of user ${userId}:`, e);
+        deadConnections.push(conn);
+      }
+    } else {
+      deadConnections.push(conn);
+    }
+  });
+
+  // Clean up dead connections
+  if (deadConnections.length > 0) {
+    deadConnections.forEach(conn => userConnections.delete(conn));
+    console.log(`Removed ${deadConnections.length} dead connections for user ${userId}`);
+
+    // If no connections left, remove the user from the map
+    if (userConnections.size === 0) {
+      app.locals.userConnections.delete(userId);
+      console.log(`Removed user ${userId} from connections map (no active connections)`);
+    }
+  }
+
+  return sentCount;
 };
 
 module.exports = (app) => {
-  const userConnections = new Map();
-
+  // Change to Map of userId -> Set of WebSocket connections
+  const userConnections = new Map(); // userId -> Set<WebSocket>
 
   app.locals.userConnections = userConnections;
 
@@ -69,26 +129,20 @@ module.exports = (app) => {
             let { userID } = packet;
             userID = Number(userID);
 
-            const existingConnection = userConnections.get(userID);
-            if (existingConnection && existingConnection !== ws) {
-              console.log(`User ${userID} already has a connection. Closing previous connection.`);
-              try {
-                existingConnection.send(JSON.stringify({
-                  type: 'connectionReplaced',
-                  message: 'Your connection was replaced by a new session'
-                }));
-                existingConnection.close();
-              } catch (e) {
-                console.error('Error closing previous connection:', e);
-              }
-            }
-
-            userConnections.set(userID, ws);
+            // Store the userID in the WebSocket object for reference
             ws.userID = userID;
-            console.log('Current active connections:', Array.from(userConnections.keys()));
+
+            // Add this connection to the user's set of connections
+            if (!userConnections.has(userID)) {
+              userConnections.set(userID, new Set());
+            }
+            userConnections.get(userID).add(ws);
+
+            console.log(`User ${userID} connected with a new session`);
+            console.log(`User ${userID} now has ${userConnections.get(userID).size} active connections`);
+            console.log('Current active users:', Array.from(userConnections.keys()));
 
             ws.send(JSON.stringify({ type: 'ok', originalType: 'joinSocket' }));
-            console.log(`User ${userID} connected with a new session`);
             break;
           }
           case 'ping': {
@@ -270,13 +324,15 @@ module.exports = (app) => {
                             });
 
                             // Notify the new member if they're online
-                            const newMemberWs = userConnections.get(newMemberId);
-                            if (newMemberWs && newMemberWs.readyState === 1) {
-                              newMemberWs.send(JSON.stringify({
-                                type: 'addedToGroup',
-                                chatId: chatId,
-                                addedBy: userId
-                              }));
+                            const message = {
+                              type: 'addedToGroup',
+                              chatId: chatId,
+                              addedBy: userId
+                            };
+
+                            const sentCount = sendToUserConnections(app, newMemberId, message);
+                            if (sentCount > 0) {
+                              console.log(`Notified ${sentCount} connections of user ${newMemberId} about being added to group ${chatId}`);
                             }
                           }
                         );
@@ -390,13 +446,15 @@ module.exports = (app) => {
                             });
 
                             // Notify the removed member if they're online
-                            const removedMemberWs = userConnections.get(memberToRemoveId);
-                            if (removedMemberWs && removedMemberWs.readyState === 1) {
-                              removedMemberWs.send(JSON.stringify({
-                                type: 'removedFromGroup',
-                                chatId: chatId,
-                                removedBy: userId
-                              }));
+                            const message = {
+                              type: 'removedFromGroup',
+                              chatId: chatId,
+                              removedBy: userId
+                            };
+
+                            const sentCount = sendToUserConnections(app, memberToRemoveId, message);
+                            if (sentCount > 0) {
+                              console.log(`Notified ${sentCount} connections of user ${memberToRemoveId} about being removed from group ${chatId}`);
                             }
                           }
                         );
@@ -504,14 +562,16 @@ module.exports = (app) => {
                             });
 
                             // Notify the member whose role was changed if they're online
-                            const changedMemberWs = userConnections.get(memberToChangeId);
-                            if (changedMemberWs && changedMemberWs.readyState === 1) {
-                              changedMemberWs.send(JSON.stringify({
-                                type: 'roleChanged',
-                                chatId: chatId,
-                                newRole: newRole,
-                                changedBy: userId
-                              }));
+                            const message = {
+                              type: 'roleChanged',
+                              chatId: chatId,
+                              newRole: newRole,
+                              changedBy: userId
+                            };
+
+                            const sentCount = sendToUserConnections(app, memberToChangeId, message);
+                            if (sentCount > 0) {
+                              console.log(`Notified ${sentCount} connections of user ${memberToChangeId} about role change in group ${chatId}`);
                             }
                           }
                         );
@@ -572,7 +632,7 @@ module.exports = (app) => {
                     // Update the chat status to 'disbanded'
                     dbConnection.query(
                       'UPDATE chat SET Status = ? WHERE ChatID = ?',
-                      [chatId, "disbanded"],
+                      ["disbanded", chatId],
                       (err) => {
                         if (err) {
                           console.error(err);
@@ -590,13 +650,15 @@ module.exports = (app) => {
                         // Notify all members
                         members.forEach(member => {
                           if (member.UserID !== userId) { // Don't notify the owner again
-                            const memberWs = userConnections.get(member.UserID);
-                            if (memberWs && memberWs.readyState === 1) {
-                              memberWs.send(JSON.stringify({
-                                type: 'groupDisbanded',
-                                chatId: chatId,
-                                disbandedBy: userId
-                              }));
+                            const message = {
+                              type: 'groupDisbanded',
+                              chatId: chatId,
+                              disbandedBy: userId
+                            };
+
+                            const sentCount = sendToUserConnections(app, member.UserID, message);
+                            if (sentCount > 0) {
+                              console.log(`Notified ${sentCount} connections of user ${member.UserID} about group ${chatId} being disbanded`);
                             }
                           }
                         });
@@ -757,45 +819,28 @@ module.exports = (app) => {
 
                                       console.log(`Found ${memberResults.length} other members to notify`);
 
-
                                       memberResults.forEach(member => {
                                         const memberId = member.UserID;
                                         console.log(`Attempting to send message to user: ${memberId}`);
 
-                                        const targetWs = userConnections.get(memberId);
-
-
-                                        if (targetWs && targetWs.readyState === 1) { 
-                                          console.log(`Connection found for user ${memberId}, sending message`);
-
-                                          const messagePacket = {
-                                            type: 'receiveChat',
-                                            chatId: chatId,
-                                            message: {
-                                              ...messagePayload,
-                                              messageId,
-                                              type,
-                                              content,
-                                              senderId: userId,
-                                              timestamp: timestamp
-
-                                            }
-                                          };
-
-                                          try {
-                                            targetWs.send(JSON.stringify(messagePacket));
-                                            console.log(`Message sent successfully to user ${memberId}`);
-                                          } catch (e) {
-                                            console.error(`Error sending message to user ${memberId}:`, e);
-
-
-                                            userConnections.delete(memberId);
+                                        const messagePacket = {
+                                          type: 'receiveChat',
+                                          chatId: chatId,
+                                          message: {
+                                            ...messagePayload,
+                                            messageId,
+                                            type,
+                                            content,
+                                            senderId: userId,
+                                            timestamp: timestamp
                                           }
+                                        };
+
+                                        const sentCount = sendToUserConnections(app, memberId, messagePacket);
+                                        if (sentCount > 0) {
+                                          console.log(`Message sent to ${sentCount} connections of user ${memberId}`);
                                         } else {
-                                          console.log(`No active connection found for user ${memberId} or connection not open`);
-                                          if (targetWs) {
-                                            console.log(`Connection state: ${targetWs.readyState}`);
-                                          }
+                                          console.log(`No active connections found for user ${memberId}`);
                                         }
                                       });
                                     }
@@ -822,7 +867,6 @@ module.exports = (app) => {
                                   messagePayload: messagePayload
                                 }));
 
-
                                 dbConnection.query(
                                     'SELECT UserID FROM chatmember WHERE ChatID = ? AND UserID != ?',
                                     [chatId, userId],
@@ -834,37 +878,29 @@ module.exports = (app) => {
 
                                       console.log(`Found ${memberResults.length} other members to notify for attachment`);
 
-
                                       memberResults.forEach(member => {
                                         const memberId = member.UserID
                                         console.log(`Attempting to send attachment message to user: ${memberId}`);
 
-                                        const targetWs = userConnections.get(memberId);
-
-                                        if (targetWs && targetWs.readyState === 1) {
-                                          console.log(`Connection found for user ${memberId}, sending attachment message`);
-
-                                          try {
-                                            targetWs.send(JSON.stringify({
-                                              type: 'receiveChat',
-                                              chatId: chatId,
-                                              message: {
-                                                ...messagePayload,
-                                                messageId,
-                                                type,
-                                                content,
-                                                attachmentUrl,
-                                                senderId: userId,
-                                                timestamp: timestamp
-                                              }
-                                            }));
-                                            console.log(`Attachment message sent successfully to user ${memberId}`);
-                                          } catch (e) {
-                                            console.error(`Error sending attachment message to user ${memberId}:`, e);
-                                            userConnections.delete(memberId);
+                                        const messagePacket = {
+                                          type: 'receiveChat',
+                                          chatId: chatId,
+                                          message: {
+                                            ...messagePayload,
+                                            messageId,
+                                            type,
+                                            content,
+                                            attachmentUrl,
+                                            senderId: userId,
+                                            timestamp: timestamp
                                           }
+                                        };
+
+                                        const sentCount = sendToUserConnections(app, memberId, messagePacket);
+                                        if (sentCount > 0) {
+                                          console.log(`Attachment message sent to ${sentCount} connections of user ${memberId}`);
                                         } else {
-                                          console.log(`No active connection found for user ${memberId} or connection not open`);
+                                          console.log(`No active connections found for user ${memberId}`);
                                         }
                                       });
                                     }
@@ -881,6 +917,84 @@ module.exports = (app) => {
             );
             break;
           }
+          case 'renameGroup': {
+            const { chatId, newName } = packet;
+            const userId = ws.userID;
+
+            if (!userId) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Not authenticated', originalType: 'renameGroup' }));
+              return;
+            }
+
+            if (!chatId || !newName) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Chat ID and new name are required', originalType: 'renameGroup' }));
+              return;
+            }
+
+            // Check if the user is an admin of the group
+            dbConnection.query(
+              'SELECT Role FROM chatmember WHERE ChatID = ? AND UserID = ?',
+              [chatId, userId],
+              (err, adminCheck) => {
+                if (err) {
+                  console.error(err);
+                  ws.send(JSON.stringify({ type: 'error', message: 'Database error', originalType: 'renameGroup' }));
+                  return;
+                }
+
+                if (adminCheck.length === 0 || !(["admin", "owner"].includes(adminCheck[0].Role))) {
+                  ws.send(JSON.stringify({ type: 'error', message: 'You don\'t have permission to rename this group', originalType: 'renameGroup' }));
+                  return;
+                }
+
+                // Check if the chat is a group
+                dbConnection.query(
+                  'SELECT Type FROM chat WHERE ChatID = ?',
+                  [chatId],
+                  (err, chatType) => {
+                    if (err) {
+                      console.error(err);
+                      ws.send(JSON.stringify({ type: 'error', message: 'Database error', originalType: 'renameGroup' }));
+                      return;
+                    }
+
+                    if (chatType.length === 0 || chatType[0].Type !== 'group') {
+                      ws.send(JSON.stringify({ type: 'error', message: 'This is not a group chat', originalType: 'renameGroup' }));
+                      return;
+                    }
+
+                    // Rename the group
+                    dbConnection.query(
+                      'UPDATE chat SET ChatName = ? WHERE ChatID = ?',
+                      [newName, chatId],
+                      (err) => {
+                        if (err) {
+                          console.error(err);
+                          ws.send(JSON.stringify({ type: 'error', message: 'Error renaming group', originalType: 'renameGroup' }));
+                          return;
+                        }
+
+                        // Notify the requester
+                        ws.send(JSON.stringify({
+                          type: 'ok',
+                          originalType: 'renameGroup',
+                          chatId: chatId,
+                          newName: newName
+                        }));
+
+                        // Notify all group members
+                        notifyGroupMembers(app, chatId, userId, 'groupRenamed', {
+                          newName: newName,
+                          renamedBy: userId
+                        });
+                      }
+                    );
+                  }
+                );
+              }
+            );
+            break;
+          }
           default:
             console.log('Unknown packet type:', packet.type);
             ws.send(JSON.stringify({ type: 'error', message: 'Unknown packet type', originalType: packet.type }));
@@ -893,21 +1007,29 @@ module.exports = (app) => {
 
     ws.on('error', (error) => {
       console.error('WebSocket error:', error);
-
     });
 
     ws.on('close', () => {
+      if (ws.userID) {
+        const connections = userConnections.get(ws.userID);
+        if (connections) {
+          connections.delete(ws);
 
-      if (ws.userID && userConnections.get(ws.userID) === ws) {
-        userConnections.delete(ws.userID);
-        console.log(`User ${ws.userID} disconnected`);
-        console.log('Remaining active connections:', Array.from(userConnections.keys()));
+          console.log(`One connection for User ${ws.userID} disconnected`);
+
+          // If no connections left, remove the user from the map
+          if (connections.size === 0) {
+            userConnections.delete(ws.userID);
+            console.log(`User ${ws.userID} has no more active connections`);
+          } else {
+            console.log(`User ${ws.userID} still has ${connections.size} active connections`);
+          }
+        }
       }
     });
 
-
     const pingInterval = setInterval(() => {
-      if (ws.readyState === 1) { 
+      if (ws.readyState === 1) {
         try {
           ws.send(JSON.stringify({ type: 'pong' }));
         } catch (e) {
@@ -917,25 +1039,48 @@ module.exports = (app) => {
       } else {
         clearInterval(pingInterval);
       }
-    }, 30000); 
-
+    }, 30000);
 
     ws.on('close', () => {
       clearInterval(pingInterval);
     });
   });
 
-
+  // Periodic cleanup of stale connections
   setInterval(() => {
     console.log('Checking for stale connections...');
-    userConnections.forEach((ws, userId) => {
-      if (ws.readyState !== 1) { 
-        console.log(`Removing stale connection for user ${userId}`);
+    let totalConnections = 0;
+    let removedConnections = 0;
+
+    userConnections.forEach((connections, userId) => {
+      const initialSize = connections.size;
+      totalConnections += initialSize;
+
+      const deadConnections = [];
+      connections.forEach(conn => {
+        if (conn.readyState !== 1) { // Not OPEN
+          deadConnections.push(conn);
+        }
+      });
+
+      // Clean up dead connections
+      deadConnections.forEach(conn => {
+        connections.delete(conn);
+      });
+
+      removedConnections += deadConnections.length;
+
+      // If no connections left, remove the user from the map
+      if (connections.size === 0) {
         userConnections.delete(userId);
+        console.log(`Removed user ${userId} from connections map (no active connections)`);
+      } else if (deadConnections.length > 0) {
+        console.log(`Removed ${deadConnections.length} stale connections for user ${userId}, ${connections.size} remaining`);
       }
     });
-    console.log(`Active connections after cleanup: ${userConnections.size}`);
-  }, 60000); 
+
+    console.log(`Active users: ${userConnections.size}, Total connections: ${totalConnections}, Removed: ${removedConnections}`);
+  }, 60000);
 
   console.log('WebSocket server initialized at /ws');
 };
