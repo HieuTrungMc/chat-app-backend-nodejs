@@ -12,6 +12,13 @@ router.get('/search', chatController.searchChatsByName)
 router.get('/:chatId/info', chatController.getChatInfo)
 router.get('/:chatId/history/:count', chatController.getChatHistory)
 router.get('/:chatId/search', chatController.searchMessages)
+
+// Message actions
 router.post('/deleteMsg', chatController.deleteMessage)
+router.post('/replyToMsg', chatController.replyToMessage)
+router.post('/forwardMsg', chatController.forwardMessage)
+
+// Private chat
 router.get('/private', chatController.getOrCreatePrivateChat);
+
 module.exports = router;

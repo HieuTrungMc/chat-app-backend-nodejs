@@ -70,29 +70,21 @@ Controller.getChatInfo = async (req, res) => {
 
 Controller.getChatHistory = async (req, res) => {
   try {
-    const chatId = req.params.chatId;
-    const count = Math.min(parseInt(req.params.count) || 10, 50);
-    const userId = req.query.userId;
+    const { chatId, count } = req.params;
+    const userId = req.user.id;
 
-    if (!chatId) {
-      return res.status(400).json({
-        success: false,
-        message: "Chat ID is required"
-      });
+    const messages = await ChatModel.getChatHistoryWithDeletions(chatId, parseInt(count), userId);
+
+    if (messages.success === false) {
+      return res.status(403).json(messages);
     }
 
-    const messages = await ChatModel.getChatHistory(chatId, count, userId);
-
-    return res.status(200).json({
-      success: true,
-      data: messages
-    });
+    return res.json(messages);
   } catch (error) {
-    console.error("Error fetching chat history:", error);
+    console.error("Error in getChatHistory controller:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch chat history",
-      error: error.message
+      message: "Server error while fetching chat history"
     });
   }
 };
@@ -114,11 +106,10 @@ Controller.searchMessages = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Search query is required"
-      });
+    });
     }
 
     const messages = await ChatModel.searchMessages(chatId, query, userId);
-
     return res.status(200).json({
       success: true,
       data: messages
@@ -169,70 +160,28 @@ Controller.searchChatsByName = async (req, res) => {
 
 Controller.deleteMessage = async (req, res) => {
   try {
-    const messageId = req.query.messageId;
-    const deleteType = req.query.deleteType;
+    const { messageId, deleteType } = req.body;
+    const userId = req.user.id;
 
-    if (!messageId) {
+    if (!messageId || !deleteType) {
       return res.status(400).json({
         success: false,
-        message: "Message ID is required"
-      });
-    }
-    
-    if (!deleteType) {
-      return res.status(400).json({
-        success: false,
-        message: "Delete type is required"
+        message: "Message ID and delete type are required"
       });
     }
 
-    // Validate delete type
-    if (deleteType !== 'remove' && deleteType !== 'unsent') {
-      return res.status(400).json({
-      success: false,
-        message: "Invalid delete type. Must be 'remove' or 'unsent'"
-    });
-  }
+    const result = await ChatModel.deleteMessage(messageId, deleteType, userId);
 
-    // Process the message deletion
-    const result = await ChatModel.deleteMessage(messageId, deleteType);
-
-    if (!result.success) {
-      return res.status(400).json({
-        success: false,
-        message: result.message
-      });
+    if (result.success) {
+      return res.json(result);
+    } else {
+      return res.status(400).json(result);
     }
-    const app = req.app;
-    if (app.locals.userConnections) {
-      const messageObj = {
-        type: "changeMessageType",
-        msgId: messageId,
-        deleteType: deleteType
-};
-      app.locals.userConnections.forEach((ws, userId) => {
-        if (ws.readyState === 1) { // WebSocket.OPEN = 1
-          try {
-            ws.send(JSON.stringify(messageObj));
-            console.log(`Message status change notification sent to user ${userId}`);
-          } catch (e) {
-            console.error(`Error sending notification to user ${userId}:`, e);
-          }
-        }
-      });
-
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: result.message
-    });
   } catch (error) {
-    console.error("Error deleting message:", error);
+    console.error("Error in deleteMessage controller:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to delete message",
-      error: error.message
+      message: "Server error while deleting message"
     });
   }
 };
@@ -263,4 +212,72 @@ Controller.getOrCreatePrivateChat = async (req, res) => {
     });
   }
 };
+
+Controller.replyToMessage = async (req, res) => {
+  try {
+    const { chatId, originalMessageId, content, type, attachmentUrl } = req.body;
+    const userId = req.user.id;
+
+    if (!chatId || !originalMessageId || !content) {
+      return res.status(400).json({
+        success: false,
+        message: "Chat ID, original message ID, and content are required"
+      });
+    }
+
+    const result = await ChatModel.replyToMessage(
+      chatId,
+      userId,
+      originalMessageId,
+      content,
+      type || 'text',
+      attachmentUrl
+    );
+
+    if (result.success) {
+      return res.json(result);
+    } else {
+      return res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error("Error in replyToMessage controller:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while replying to message"
+    });
+  }
+};
+
+Controller.forwardMessage = async (req, res) => {
+  try {
+    const { originalMessageId, targetChatId } = req.body;
+    const userId = req.user.id;
+
+    if (!originalMessageId || !targetChatId) {
+      return res.status(400).json({
+        success: false,
+        message: "Original message ID and target chat ID are required"
+      });
+    }
+
+    const result = await ChatModel.forwardMessage(
+      originalMessageId,
+      targetChatId,
+      userId
+    );
+
+    if (result.success) {
+      return res.json(result);
+    } else {
+      return res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error("Error in forwardMessage controller:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while forwarding message"
+    });
+  }
+};
+
 module.exports = Controller;

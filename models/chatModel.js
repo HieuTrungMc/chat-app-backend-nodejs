@@ -356,66 +356,112 @@ const chatModel = {
     }
   },
 
-  deleteMessage: async (messageId, deleteType) => {
+  deleteMessage: async (messageId, deleteType, userId = null) => {
     try {
-      
-      if (deleteType !== 'remove' && deleteType !== 'unsent') {
+      if (!['remove', 'unsent', 'delete_for_me'].includes(deleteType)) {
         return {
           success: false,
-          message: "Invalid delete type. Must be 'remove' or 'unsent'"
+          message: "Invalid delete type. Must be 'remove', 'unsent', or 'delete_for_me'"
         };
       }
 
       const messageQuery = `
-      SELECT Type
-      FROM message
-      WHERE MessageID = ?
+        SELECT m.Type, m.UserID, m.ChatID
+        FROM message m
+        WHERE m.MessageID = ?
     `;
       const [messages] = await pool.execute(messageQuery, [messageId]);
 
       if (messages.length === 0) {
         return {
           success: false,
-          message: "Message not found in this chat"
+          message: "Message not found"
         };
       }
 
-      
-      const messageType = messages[0].Type;
-      let updateQuery;
+      const message = messages[0];
 
-      if (messageType === 'text') {
-        updateQuery = `
-        UPDATE textmessage
-        SET Type = ?
-        WHERE MessageID = ?
-      `;
-      } else if (messageType === 'attachment') {
-        updateQuery = `
-        UPDATE attachmentmessage
-        SET Type = ?
-        WHERE MessageID = ?
-      `;
+      // For 'unsent', verify the user is the sender
+      if (deleteType === 'unsent' && userId && message.UserID !== userId) {
+        return {
+          success: false,
+          message: "You can only unsend your own messages"
+        };
+      }
+
+      // For personal deletion, create a record in message_deletions table
+      if (deleteType === 'delete_for_me') {
+        if (!userId) {
+        return {
+          success: false,
+            message: "User ID is required for personal deletion"
+        };
+      }
+
+        // Check if user is a member of the chat
+        const memberQuery = `
+          SELECT COUNT(*) as isMember
+            FROM chatmember
+          WHERE ChatID = ? AND UserID = ?
+        `;
+        const [memberCheck] = await pool.execute(memberQuery, [message.ChatID, userId]);
+
+        if (memberCheck[0].isMember === 0) {
+              return {
+            success: false,
+            message: "You are not a member of this chat"
+              };
+            }
+
+        // Insert into message_deletions table
+        const insertDeletionQuery = `
+          INSERT INTO message_deletions (MessageID, UserID, DeletedTimestamp)
+          VALUES (?, ?, ?)
+          ON DUPLICATE KEY UPDATE DeletedTimestamp = ?
+        `;
+        const now = new Date();
+        await pool.execute(insertDeletionQuery, [messageId, userId, now, now]);
+        return {
+          success: true,
+          message: "Message deleted from your view"
+        };
       } else {
+        // For 'remove' or 'unsent', update the message type
+        let updateQuery;
+
+        if (message.Type === 'text') {
+          updateQuery = `
+            UPDATE textmessage
+            SET Type = ?
+            WHERE MessageID = ?
+          `;
+        } else if (message.Type === 'attachment') {
+          updateQuery = `
+            UPDATE attachmentmessage
+            SET Type = ?
+            WHERE MessageID = ?
+          `;
+        } else {
+          return {
+            success: false,
+            message: "Unknown message type"
+};
+        }
+
+        const [result] = await pool.execute(updateQuery, [deleteType, messageId]);
+
+        if (result.affectedRows === 0) {
+          return {
+            success: false,
+            message: "Failed to update message"
+          };
+        }
+
         return {
-          success: false,
-          message: "Unknown message type"
+          success: true,
+          message: deleteType === 'remove' ? "Message removed successfully" : "Message marked as unsent"
         };
       }
-
-      const [result] = await pool.execute(updateQuery, [deleteType, messageId]);
-
-      if (result.affectedRows === 0) {
-        return {
-          success: false,
-          message: "Failed to update message"
-        };
-      }
-
-      return {
-        success: true,
-        message: deleteType === 'remove' ? "Message removed successfully" : "Message marked as unsent"
-      };
     } catch (error) {
       console.error("Error in deleteMessage:", error);
       throw error;
@@ -436,9 +482,9 @@ const chatModel = {
       AND cm2.UserID = ?
       AND c.Status = 'active'
     `;
-    
+
     const [existingChats] = await pool.execute(findChatQuery, [userIdA, userIdB]);
-    
+
     if (existingChats.length > 0) {
       // Chat already exists, return its ID
       return {
@@ -448,18 +494,18 @@ const chatModel = {
         message: "Existing chat found"
       };
     }
-    
+
     // No chat exists, create a new one
     const chatId = `private-${userIdA}-${userIdB}-${Date.now()}`;
     const createdDate = new Date();
-    
+
     // Create the chat
     const createChatQuery = `
       INSERT INTO chat (ChatID, CreatedDate, Type, Status, Owner)
       VALUES (?, ?, 'private', 'active', ?)
     `;
     await pool.execute(createChatQuery, [chatId, createdDate, userIdA]);
-    
+
     // Add both users as members
     const addMembersQuery = `
       INSERT INTO chatmember (ChatID, UserID, Role, AddedTimestamp)
@@ -469,7 +515,7 @@ const chatModel = {
       chatId, userIdA, createdDate,
       chatId, userIdB, createdDate
     ]);
-    
+
     return {
       success: true,
       chatId: chatId,
@@ -485,55 +531,53 @@ const chatModel = {
   searchChatsByName: async (userId, searchQuery) => {
     try {
       const query = `
-        SELECT c.ChatID, c.CreatedDate, c.Type, c.Status, c.Owner, c.ChatImage, c.ChatName
-        FROM chat c
-        JOIN chatmember cm ON c.ChatID = cm.ChatID
-        WHERE cm.UserID = ?
-          AND (
-            (c.Type = 'group' AND c.ChatName LIKE ?)
-            OR c.Type = 'private'
-          )
-        ORDER BY c.CreatedDate DESC
+          SELECT c.ChatID, c.CreatedDate, c.Type, c.Status, c.Owner, c.ChatImage, c.ChatName
+          FROM chat c
+                   JOIN chatmember cm ON c.ChatID = cm.ChatID
+          WHERE cm.UserID = ?
+            AND c.Status != 'disbanded'
+            AND (
+              (c.Type = 'group' AND c.ChatName LIKE ?)
+                  OR c.Type = 'private'
+              )
+          ORDER BY c.CreatedDate DESC
       `;
 
       const searchPattern = `%${searchQuery}%`;
       const [chats] = await pool.execute(query, [userId, searchPattern]);
 
-      // For private chats, we need to check the other user's name
       const enrichedChats = await Promise.all(chats.map(async (chat) => {
-        // Get other members in the chat
         const membersQuery = `
-          SELECT UserID
-          FROM chatmember
-          WHERE ChatID = ? AND UserID != ?
+            SELECT UserID
+            FROM chatmember
+            WHERE ChatID = ? AND UserID != ?
         `;
         const [members] = await pool.execute(membersQuery, [chat.ChatID, userId]);
 
-        // Get latest message for each chat
         const latestMessageQuery = `
-          SELECT m.MessageID, m.UserID, m.Type, m.Timestamp,
-                 CASE
-                   WHEN m.Type = 'text' THEN tm.Content
-                   WHEN m.Type = 'attachment' THEN am.Content
-                   ELSE NULL
-                 END as Content,
-                 CASE
-                   WHEN m.Type = 'attachment' THEN am.AttachmentUrl
-                   ELSE NULL
-                 END as AttachmentUrl,
-                 CASE
-                   WHEN m.Type = 'text' THEN tm.Type
-                   WHEN m.Type = 'attachment' THEN am.Type
-                   ELSE NULL
-                 END as DeleteType,
-                 u.Name as SenderName
-          FROM message m
-          LEFT JOIN textmessage tm ON m.MessageID = tm.MessageID
-          LEFT JOIN attachmentmessage am ON m.MessageID = am.MessageID
-          JOIN user u ON m.UserID = u.UserID
-          WHERE m.ChatID = ?
-          ORDER BY m.Timestamp DESC
-          LIMIT 1
+            SELECT m.MessageID, m.UserID, m.Type, m.Timestamp,
+                   CASE
+                       WHEN m.Type = 'text' THEN tm.Content
+                       WHEN m.Type = 'attachment' THEN am.Content
+                       ELSE NULL
+                       END as Content,
+                   CASE
+                       WHEN m.Type = 'attachment' THEN am.AttachmentUrl
+                       ELSE NULL
+                       END as AttachmentUrl,
+                   CASE
+                       WHEN m.Type = 'text' THEN tm.Type
+                       WHEN m.Type = 'attachment' THEN am.Type
+                       ELSE NULL
+                       END as DeleteType,
+                   u.Name as SenderName
+            FROM message m
+                     LEFT JOIN textmessage tm ON m.MessageID = tm.MessageID
+                     LEFT JOIN attachmentmessage am ON m.MessageID = am.MessageID
+                     JOIN user u ON m.UserID = u.UserID
+            WHERE m.ChatID = ?
+            ORDER BY m.Timestamp DESC
+            LIMIT 1
         `;
         const [latestMessages] = await pool.execute(latestMessageQuery, [chat.ChatID]);
         const lastMessage = latestMessages.length > 0 ? {
@@ -553,9 +597,9 @@ const chatModel = {
 
           try {
             const userQuery = `
-              SELECT UserID as id, Name as name, ImageUrl as image
-              FROM user
-              WHERE UserID = ?
+                SELECT UserID as id, Name as name, ImageUrl as image
+                FROM user
+                WHERE UserID = ?
             `;
             const [users] = await pool.execute(userQuery, [otherUserId]);
 
@@ -565,7 +609,7 @@ const chatModel = {
               if (searchQuery && chat.Type === 'private') {
                 if (!otherUser.name || !otherUser.name.toLowerCase().includes(searchQuery.toLowerCase())) {
                   return null;
-}
+                }
               }
 
               return {
@@ -575,7 +619,7 @@ const chatModel = {
                 imageUrl: otherUser.image || '',
                 otherUserId: otherUserId,
                 lastMessage: lastMessage
-};
+              };
             }
           } catch (error) {
             console.error(`Error fetching user ${otherUserId} details:`, error);
@@ -604,6 +648,356 @@ const chatModel = {
       return filteredChats;
     } catch (error) {
       console.error("Error in searchChatsByName:", error);
+      throw error;
+    }
+  },
+
+  replyToMessage: async (chatId, userId, originalMessageId, replyContent, replyType = 'text', attachmentUrl = null) => {
+    try {
+      // Verify user is a member of the chat
+      const memberQuery = `
+        SELECT COUNT(*) as isMember
+        FROM chatmember
+        WHERE ChatID = ? AND UserID = ?
+      `;
+      const [memberCheck] = await pool.execute(memberQuery, [chatId, userId]);
+
+      if (memberCheck[0].isMember === 0) {
+        return {
+          success: false,
+          message: "You are not a member of this chat"
+        };
+      }
+
+      // Verify original message exists
+      const originalMessageQuery = `
+        SELECT m.MessageID, m.UserID, m.Type, m.Timestamp,
+               CASE 
+                 WHEN m.Type = 'text' THEN tm.Content
+                 WHEN m.Type = 'attachment' THEN am.Content
+                 ELSE NULL
+               END as Content,
+               CASE
+                 WHEN m.Type = 'attachment' THEN am.AttachmentUrl
+                 ELSE NULL
+               END as AttachmentUrl,
+               u.Name as SenderName
+        FROM message m
+        LEFT JOIN textmessage tm ON m.MessageID = tm.MessageID
+        LEFT JOIN attachmentmessage am ON m.MessageID = am.MessageID
+        JOIN user u ON m.UserID = u.UserID
+        WHERE m.MessageID = ? AND m.ChatID = ?
+      `;
+      const [originalMessages] = await pool.execute(originalMessageQuery, [originalMessageId, chatId]);
+
+      if (originalMessages.length === 0) {
+        return {
+          success: false,
+          message: "Original message not found"
+        };
+      }
+
+      const originalMessage = originalMessages[0];
+      const timestamp = new Date();
+
+      // Create the new message
+      const insertMessageQuery = `
+        INSERT INTO message (ChatID, UserID, Type, Timestamp, ReplyToID)
+        VALUES (?, ?, ?, ?, ?)
+      `;
+      const [messageResult] = await pool.execute(insertMessageQuery, [
+        chatId,
+        userId,
+        replyType,
+        timestamp,
+        originalMessageId
+      ]);
+
+      const messageId = messageResult.insertId;
+
+      // Insert content based on message type
+      if (replyType === 'text') {
+        const insertTextQuery = `
+          INSERT INTO textmessage (MessageID, Content)
+          VALUES (?, ?)
+        `;
+        await pool.execute(insertTextQuery, [messageId, replyContent]);
+      } else if (replyType === 'attachment') {
+        const insertAttachmentQuery = `
+          INSERT INTO attachmentmessage (MessageID, Content, AttachmentUrl)
+          VALUES (?, ?, ?)
+        `;
+        await pool.execute(insertAttachmentQuery, [messageId, replyContent, attachmentUrl]);
+      } else {
+        return {
+          success: false,
+          message: "Invalid message type"
+        };
+      }
+
+      return {
+        success: true,
+        messageId: messageId,
+        originalMessage: {
+          messageId: originalMessage.MessageID,
+          userId: originalMessage.UserID,
+          type: originalMessage.Type,
+          content: originalMessage.Content,
+          attachmentUrl: originalMessage.AttachmentUrl,
+          senderName: originalMessage.SenderName,
+          timestamp: originalMessage.Timestamp
+        },
+        message: "Reply sent successfully"
+      };
+    } catch (error) {
+      console.error("Error in replyToMessage:", error);
+      throw error;
+    }
+  },
+
+  forwardMessage: async (originalMessageId, targetChatId, userId) => {
+    try {
+      // Verify user is a member of the target chat
+      const memberQuery = `
+        SELECT COUNT(*) as isMember
+        FROM chatmember
+        WHERE ChatID = ? AND UserID = ?
+      `;
+      const [memberCheck] = await pool.execute(memberQuery, [targetChatId, userId]);
+
+      if (memberCheck[0].isMember === 0) {
+        return {
+          success: false,
+          message: "You are not a member of the target chat"
+        };
+      }
+
+      // Get the original message details
+      const originalMessageQuery = `
+        SELECT m.MessageID, m.UserID, m.Type, m.ChatID,
+               CASE 
+                 WHEN m.Type = 'text' THEN tm.Content
+                 WHEN m.Type = 'attachment' THEN am.Content
+                 ELSE NULL
+               END as Content,
+               CASE
+                 WHEN m.Type = 'attachment' THEN am.AttachmentUrl
+                 ELSE NULL
+               END as AttachmentUrl
+        FROM message m
+        LEFT JOIN textmessage tm ON m.MessageID = tm.MessageID
+        LEFT JOIN attachmentmessage am ON m.MessageID = am.MessageID
+        WHERE m.MessageID = ?
+      `;
+      const [originalMessages] = await pool.execute(originalMessageQuery, [originalMessageId]);
+
+      if (originalMessages.length === 0) {
+        return {
+          success: false,
+          message: "Original message not found"
+        };
+      }
+
+      const originalMessage = originalMessages[0];
+
+      // Verify user has access to the original message
+      const sourceChatMemberQuery = `
+        SELECT COUNT(*) as isMember
+        FROM chatmember
+        WHERE ChatID = ? AND UserID = ?
+      `;
+      const [sourceMemberCheck] = await pool.execute(sourceChatMemberQuery, [originalMessage.ChatID, userId]);
+
+      if (sourceMemberCheck[0].isMember === 0) {
+        return {
+          success: false,
+          message: "You don't have access to the original message"
+        };
+      }
+
+      const timestamp = new Date();
+
+      // Create the new message as a forwarded message
+      const insertMessageQuery = `
+        INSERT INTO message (ChatID, UserID, Type, Timestamp, ForwardedFrom)
+        VALUES (?, ?, ?, ?, ?)
+      `;
+      const [messageResult] = await pool.execute(insertMessageQuery, [
+        targetChatId,
+        userId,
+        originalMessage.Type,
+        timestamp,
+        originalMessageId
+      ]);
+
+      const messageId = messageResult.insertId;
+
+      // Insert content based on message type
+      if (originalMessage.Type === 'text') {
+        const insertTextQuery = `
+          INSERT INTO textmessage (MessageID, Content)
+          VALUES (?, ?)
+        `;
+        await pool.execute(insertTextQuery, [messageId, originalMessage.Content]);
+      } else if (originalMessage.Type === 'attachment') {
+        const insertAttachmentQuery = `
+          INSERT INTO attachmentmessage (MessageID, Content, AttachmentUrl)
+          VALUES (?, ?, ?)
+        `;
+        await pool.execute(insertAttachmentQuery, [messageId, originalMessage.Content, originalMessage.AttachmentUrl]);
+      }
+
+      return {
+        success: true,
+        messageId: messageId,
+        message: "Message forwarded successfully"
+      };
+    } catch (error) {
+      console.error("Error in forwardMessage:", error);
+      throw error;
+    }
+  },
+
+  getChatHistoryWithDeletions: async (chatId, count = 10, userId) => {
+    try {
+      if (!userId) {
+        return {
+          success: false,
+          message: "User ID is required"
+        };
+      }
+
+      // Check if user is a member of the chat
+      const memberQuery = `
+        SELECT COUNT(*) as isMember
+        FROM chatmember
+        WHERE ChatID = ? AND UserID = ?
+      `;
+      const [memberCheck] = await pool.execute(memberQuery, [chatId, userId]);
+
+      if (memberCheck[0].isMember === 0) {
+        return {
+          success: false,
+          message: "You are not a member of this chat"
+        };
+      }
+
+      // Get messages excluding those deleted by the user
+      const messagesQuery = `
+        SELECT m.MessageID, m.UserID, m.Type, m.Timestamp, m.Reactions, 
+               m.ReplyToID, m.ForwardedFrom,
+               CASE
+                 WHEN m.Type = 'text' THEN tm.Content
+                 WHEN m.Type = 'attachment' THEN am.Content
+                 ELSE NULL
+               END as Content,
+               CASE
+                 WHEN m.Type = 'attachment' THEN am.AttachmentUrl
+                 ELSE NULL
+               END as AttachmentUrl,
+               CASE
+                 WHEN m.Type = 'text' THEN tm.Type
+                 WHEN m.Type = 'attachment' THEN am.Type
+                 ELSE NULL
+               END as DeleteReason,
+               u.Name as SenderName,
+               u.ImageUrl as SenderImage
+        FROM message m
+        LEFT JOIN textmessage tm ON m.MessageID = tm.MessageID
+        LEFT JOIN attachmentmessage am ON m.MessageID = am.MessageID
+        JOIN user u ON m.UserID = u.UserID
+        LEFT JOIN message_deletions md ON m.MessageID = md.MessageID AND md.UserID = ?
+        WHERE m.ChatID = ? AND md.MessageID IS NULL
+        ORDER BY m.Timestamp DESC
+        LIMIT ?
+      `;
+
+      const [messages] = await pool.execute(messagesQuery, [userId, chatId, count]);
+
+      // Enrich messages with reply and forwarded info
+      const enrichedMessages = await Promise.all(messages.map(async (msg) => {
+        let replyToMessage = null;
+        let forwardedFromMessage = null;
+
+        // If this is a reply, get the original message
+        if (msg.ReplyToID) {
+          const replyQuery = `
+            SELECT m.MessageID, m.UserID, m.Type, m.Timestamp,
+                   CASE 
+                     WHEN m.Type = 'text' THEN tm.Content
+                     WHEN m.Type = 'attachment' THEN am.Content
+                     ELSE NULL
+                   END as Content,
+                   CASE
+                     WHEN m.Type = 'attachment' THEN am.AttachmentUrl
+                     ELSE NULL
+                   END as AttachmentUrl,
+                   u.Name as SenderName
+            FROM message m
+            LEFT JOIN textmessage tm ON m.MessageID = tm.MessageID
+            LEFT JOIN attachmentmessage am ON m.MessageID = am.MessageID
+            JOIN user u ON m.UserID = u.UserID
+            WHERE m.MessageID = ?
+          `;
+          const [replyResults] = await pool.execute(replyQuery, [msg.ReplyToID]);
+          if (replyResults.length > 0) {
+            replyToMessage = {
+              messageId: replyResults[0].MessageID,
+              userId: replyResults[0].UserID,
+              type: replyResults[0].Type,
+              timestamp: replyResults[0].Timestamp,
+              content: replyResults[0].Content,
+              attachmentUrl: replyResults[0].AttachmentUrl,
+              senderName: replyResults[0].SenderName
+            };
+          }
+        }
+
+        // If this is forwarded, get the original message
+        if (msg.ForwardedFrom) {
+          const forwardQuery = `
+            SELECT m.MessageID, m.UserID, m.Type, m.Timestamp, m.ChatID,
+                   CASE 
+                     WHEN m.Type = 'text' THEN tm.Content
+                     WHEN m.Type = 'attachment' THEN am.Content
+                     ELSE NULL
+                   END as Content,
+                   u.Name as SenderName
+            FROM message m
+            LEFT JOIN textmessage tm ON m.MessageID = tm.MessageID
+            LEFT JOIN attachmentmessage am ON m.MessageID = am.MessageID
+            JOIN user u ON m.UserID = u.UserID
+            WHERE m.MessageID = ?
+          `;
+          const [forwardResults] = await pool.execute(forwardQuery, [msg.ForwardedFrom]);
+          if (forwardResults.length > 0) {
+            forwardedFromMessage = {
+              messageId: forwardResults[0].MessageID,
+              userId: forwardResults[0].UserID,
+              senderName: forwardResults[0].SenderName
+            };
+          }
+        }
+
+        return {
+          messageId: msg.MessageID,
+          userId: msg.UserID,
+          type: msg.Type,
+          timestamp: msg.Timestamp,
+          content: msg.Content,
+          attachmentUrl: msg.AttachmentUrl,
+          deleteReason: msg.DeleteReason,
+          senderName: msg.SenderName,
+          senderImage: msg.SenderImage,
+          reactions: msg.Reactions ? JSON.parse(msg.Reactions) : [],
+          replyTo: replyToMessage,
+          forwardedFrom: forwardedFromMessage
+        };
+      }));
+
+      return enrichedMessages;
+    } catch (error) {
+      console.error("Error in getChatHistoryWithDeletions:", error);
       throw error;
     }
   }
