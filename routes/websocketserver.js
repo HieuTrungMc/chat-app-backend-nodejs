@@ -995,6 +995,613 @@ module.exports = (app) => {
             );
             break;
           }
+          case 'replyToMessage': {
+            const { chatId, originalMessageId, content, type, attachmentUrl } = packet;
+            const userId = ws.userID;
+
+            if (!userId) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Not authenticated', originalType: 'replyToMessage' }));
+              return;
+            }
+
+            if (!chatId || !originalMessageId || !content) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Chat ID, original message ID, and content are required', originalType: 'replyToMessage' }));
+              return;
+            }
+
+            // Verify user is a member of the chat
+            dbConnection.query(
+                'SELECT COUNT(*) as isMember FROM chatmember WHERE ChatID = ? AND UserID = ?',
+                [chatId, userId],
+                (err, memberCheck) => {
+                  if (err) {
+                    console.error(err);
+                    ws.send(JSON.stringify({ type: 'error', message: 'Database error', originalType: 'replyToMessage' }));
+                    return;
+                  }
+
+                  if (memberCheck[0].isMember === 0) {
+                    ws.send(JSON.stringify({ type: 'error', message: 'You are not a member of this chat', originalType: 'replyToMessage' }));
+                    return;
+                  }
+
+                  // Verify original message exists
+                  dbConnection.query(
+                      `SELECT m.MessageID, m.UserID, m.Type, m.Timestamp,
+                CASE 
+                  WHEN m.Type = 'text' THEN tm.Content
+                  WHEN m.Type = 'attachment' THEN am.Content
+                  ELSE NULL
+                END as Content,
+                CASE
+                  WHEN m.Type = 'attachment' THEN am.AttachmentUrl
+                  ELSE NULL
+                END as AttachmentUrl,
+                u.Name as SenderName
+         FROM message m
+         LEFT JOIN textmessage tm ON m.MessageID = tm.MessageID
+         LEFT JOIN attachmentmessage am ON m.MessageID = am.MessageID
+         JOIN user u ON m.UserID = u.UserID
+         WHERE m.MessageID = ? AND m.ChatID = ?`,
+                      [originalMessageId, chatId],
+                      (err, originalMessages) => {
+                        if (err) {
+                          console.error(err);
+                          ws.send(JSON.stringify({ type: 'error', message: 'Database error', originalType: 'replyToMessage' }));
+                          return;
+                        }
+
+                        if (originalMessages.length === 0) {
+                          ws.send(JSON.stringify({ type: 'error', message: 'Original message not found', originalType: 'replyToMessage' }));
+                          return;
+                        }
+
+                        const originalMessage = originalMessages[0];
+                        const timestamp = new Date();
+                        const messageType = type || 'text';
+
+                        // Create the new message
+                        dbConnection.query(
+                            'INSERT INTO message (ChatID, UserID, Type, Timestamp, ReplyToID) VALUES (?, ?, ?, ?, ?)',
+                            [chatId, userId, messageType, timestamp, originalMessageId],
+                            (err, messageResult) => {
+                              if (err) {
+                                console.error(err);
+                                ws.send(JSON.stringify({ type: 'error', message: 'Error creating message', originalType: 'replyToMessage' }));
+                                return;
+                              }
+
+                              const messageId = messageResult.insertId;
+
+                              // Insert content based on message type
+                              if (messageType === 'text') {
+                                dbConnection.query(
+                                    'INSERT INTO textmessage (MessageID, Content) VALUES (?, ?)',
+                                    [messageId, content],
+                                    (err) => {
+                                      if (err) {
+                                        console.error(err);
+                                        ws.send(JSON.stringify({ type: 'error', message: 'Error storing message content', originalType: 'replyToMessage' }));
+                                        return;
+                                      }
+
+                                      // Notify the sender
+                                      ws.send(JSON.stringify({
+                                        type: 'ok',
+                                        originalType: 'replyToMessage',
+                                        messageId: messageId,
+                                        originalMessage: {
+                                          messageId: originalMessage.MessageID,
+                                          userId: originalMessage.UserID,
+                                          type: originalMessage.Type,
+                                          content: originalMessage.Content,
+                                          attachmentUrl: originalMessage.AttachmentUrl,
+                                          senderName: originalMessage.SenderName,
+                                          timestamp: originalMessage.Timestamp
+                                        }
+                                      }));
+
+                                      // Notify other chat members
+                                      dbConnection.query(
+                                          'SELECT UserID FROM chatmember WHERE ChatID = ? AND UserID != ?',
+                                          [chatId, userId],
+                                          (err, memberResults) => {
+                                            if (err) {
+                                              console.error(err);
+                                              return;
+                                            }
+
+                                            memberResults.forEach(member => {
+                                              const memberId = member.UserID;
+
+                                              const messagePacket = {
+                                                type: 'receiveReply',
+                                                chatId: chatId,
+                                                message: {
+                                                  messageId,
+                                                  type: messageType,
+                                                  content,
+                                                  senderId: userId,
+                                                  timestamp: timestamp,
+                                                  replyTo: {
+                                                    messageId: originalMessage.MessageID,
+                                                    userId: originalMessage.UserID,
+                                                    type: originalMessage.Type,
+                                                    content: originalMessage.Content,
+                                                    attachmentUrl: originalMessage.AttachmentUrl,
+                                                    senderName: originalMessage.SenderName,
+                                                    timestamp: originalMessage.Timestamp
+                                                  }
+                                                }
+                                              };
+
+                                              sendToUserConnections(app, memberId, messagePacket);
+                                            });
+                                          }
+                                      );
+                                    }
+                                );
+                              } else if (messageType === 'attachment') {
+                                dbConnection.query(
+                                    'INSERT INTO attachmentmessage (MessageID, Content, AttachmentUrl) VALUES (?, ?, ?)',
+                                    [messageId, content, attachmentUrl],
+                                    (err) => {
+                                      if (err) {
+                                        console.error(err);
+                                        ws.send(JSON.stringify({ type: 'error', message: 'Error storing message content', originalType: 'replyToMessage' }));
+                                        return;
+                                      }
+
+                                      // Notify the sender
+                                      ws.send(JSON.stringify({
+                                        type: 'ok',
+                                        originalType: 'replyToMessage',
+                                        messageId: messageId,
+                                        originalMessage: {
+                                          messageId: originalMessage.MessageID,
+                                          userId: originalMessage.UserID,
+                                          type: originalMessage.Type,
+                                          content: originalMessage.Content,
+                                          attachmentUrl: originalMessage.AttachmentUrl,
+                                          senderName: originalMessage.SenderName,
+                                          timestamp: originalMessage.Timestamp
+                                        }
+                                      }));
+
+                                      // Notify other chat members
+                                      dbConnection.query(
+                                          'SELECT UserID FROM chatmember WHERE ChatID = ? AND UserID != ?',
+                                          [chatId, userId],
+                                          (err, memberResults) => {
+                                            if (err) {
+                                              console.error(err);
+                                              return;
+                                            }
+
+                                            memberResults.forEach(member => {
+                                              const memberId = member.UserID;
+
+                                              const messagePacket = {
+                                                type: 'receiveReply',
+                                                chatId: chatId,
+                                                message: {
+                                                  messageId,
+                                                  type: messageType,
+                                                  content,
+                                                  attachmentUrl,
+                                                  senderId: userId,
+                                                  timestamp: timestamp,
+                                                  replyTo: {
+                                                    messageId: originalMessage.MessageID,
+                                                    userId: originalMessage.UserID,
+                                                    type: originalMessage.Type,
+                                                    content: originalMessage.Content,
+                                                    attachmentUrl: originalMessage.AttachmentUrl,
+                                                    senderName: originalMessage.SenderName,
+                                                    timestamp: originalMessage.Timestamp
+                                                  }
+                                                }
+                                              };
+
+                                              sendToUserConnections(app, memberId, messagePacket);
+                                            });
+                                          }
+                                      );
+                                    }
+                                );
+                              } else {
+                                ws.send(JSON.stringify({ type: 'error', message: 'Invalid message type', originalType: 'replyToMessage' }));
+                              }
+                            }
+                        );
+                      }
+                  );
+                }
+            );
+            break;
+          }
+          case 'forwardMessage': {
+            const { originalMessageId, targetChatId } = packet;
+            const userId = ws.userID;
+
+            if (!userId) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Not authenticated', originalType: 'forwardMessage' }));
+              return;
+            }
+
+            if (!originalMessageId || !targetChatId) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Original message ID and target chat ID are required', originalType: 'forwardMessage' }));
+              return;
+            }
+
+            // Verify user is a member of the target chat
+            dbConnection.query(
+                'SELECT COUNT(*) as isMember FROM chatmember WHERE ChatID = ? AND UserID = ?',
+                [targetChatId, userId],
+                (err, memberCheck) => {
+                  if (err) {
+                    console.error(err);
+                    ws.send(JSON.stringify({ type: 'error', message: 'Database error', originalType: 'forwardMessage' }));
+                    return;
+                  }
+
+                  if (memberCheck[0].isMember === 0) {
+                    ws.send(JSON.stringify({ type: 'error', message: 'You are not a member of the target chat', originalType: 'forwardMessage' }));
+                    return;
+                  }
+
+                  // Get the original message details
+                  dbConnection.query(
+                      `SELECT m.MessageID, m.UserID, m.Type, m.ChatID,
+                CASE 
+                  WHEN m.Type = 'text' THEN tm.Content
+                  WHEN m.Type = 'attachment' THEN am.Content
+                  ELSE NULL
+                END as Content,
+                CASE
+                  WHEN m.Type = 'attachment' THEN am.AttachmentUrl
+                  ELSE NULL
+                END as AttachmentUrl
+         FROM message m
+         LEFT JOIN textmessage tm ON m.MessageID = tm.MessageID
+         LEFT JOIN attachmentmessage am ON m.MessageID = am.MessageID
+         WHERE m.MessageID = ?`,
+                      [originalMessageId],
+                      (err, originalMessages) => {
+                        if (err) {
+                          console.error(err);
+                          ws.send(JSON.stringify({ type: 'error', message: 'Database error', originalType: 'forwardMessage' }));
+                          return;
+                        }
+
+                        if (originalMessages.length === 0) {
+                          ws.send(JSON.stringify({ type: 'error', message: 'Original message not found', originalType: 'forwardMessage' }));
+                          return;
+                        }
+
+                        const originalMessage = originalMessages[0];
+
+                        // Verify user has access to the original message
+                        dbConnection.query(
+                            'SELECT COUNT(*) as isMember FROM chatmember WHERE ChatID = ? AND UserID = ?',
+                            [originalMessage.ChatID, userId],
+                            (err, sourceMemberCheck) => {
+                              if (err) {
+                                console.error(err);
+                                ws.send(JSON.stringify({ type: 'error', message: 'Database error', originalType: 'forwardMessage' }));
+                                return;
+                              }
+
+                              if (sourceMemberCheck[0].isMember === 0) {
+                                ws.send(JSON.stringify({ type: 'error', message: 'You don\'t have access to the original message', originalType: 'forwardMessage' }));
+                                return;
+                              }
+
+                              const timestamp = new Date();
+
+                              // Create the new message as a forwarded message
+                              dbConnection.query(
+                                  'INSERT INTO message (ChatID, UserID, Type, Timestamp, ForwardedFrom) VALUES (?, ?, ?, ?, ?)',
+                                  [targetChatId, userId, originalMessage.Type, timestamp, originalMessageId],
+                                  (err, messageResult) => {
+                                    if (err) {
+                                      console.error(err);
+                                      ws.send(JSON.stringify({ type: 'error', message: 'Error creating message', originalType: 'forwardMessage' }));
+                                      return;
+                                    }
+
+                                    const messageId = messageResult.insertId;
+
+                                    // Insert content based on message type
+                                    if (originalMessage.Type === 'text') {
+                                      dbConnection.query(
+                                          'INSERT INTO textmessage (MessageID, Content) VALUES (?, ?)',
+                                          [messageId, originalMessage.Content],
+                                          (err) => {
+                                            if (err) {
+                                              console.error(err);
+                                              ws.send(JSON.stringify({ type: 'error', message: 'Error storing message content', originalType: 'forwardMessage' }));
+                                              return;
+                                            }
+
+                                            // Notify the sender
+                                            ws.send(JSON.stringify({
+                                              type: 'ok',
+                                              originalType: 'forwardMessage',
+                                              messageId: messageId
+                                            }));
+
+                                            // Get original sender info
+                                            dbConnection.query(
+                                                'SELECT Name FROM user WHERE UserID = ?',
+                                                [originalMessage.UserID],
+                                                (err, userResults) => {
+                                                  const originalSenderName = err || userResults.length === 0 ? 'Unknown User' : userResults[0].Name;
+
+                                                  // Notify target chat members
+                                                  dbConnection.query(
+                                                      'SELECT UserID FROM chatmember WHERE ChatID = ? AND UserID != ?',
+                                                      [targetChatId, userId],
+                                                      (err, memberResults) => {
+                                                        if (err) {
+                                                          console.error(err);
+                                                          return;
+                                                        }
+
+                                                        memberResults.forEach(member => {
+                                                          const memberId = member.UserID;
+
+                                                          const messagePacket = {
+                                                            type: 'receiveForward',
+                                                            chatId: targetChatId,
+                                                            message: {
+                                                              messageId,
+                                                              type: originalMessage.Type,
+                                                              content: originalMessage.Content,
+                                                              senderId: userId,
+                                                              timestamp: timestamp,
+                                                              forwardedFrom: {
+                                                                messageId: originalMessageId,
+                                                                userId: originalMessage.UserID,
+                                                                senderName: originalSenderName
+                                                              }
+                                                            }
+                                                          };
+
+                                                          sendToUserConnections(app, memberId, messagePacket);
+                                                        });
+                                                      }
+                                                  );
+                                                }
+                                            );
+                                          }
+                                      );
+                                    } else if (originalMessage.Type === 'attachment') {
+                                      dbConnection.query(
+                                          'INSERT INTO attachmentmessage (MessageID, Content, AttachmentUrl) VALUES (?, ?, ?)',
+                                          [messageId, originalMessage.Content, originalMessage.AttachmentUrl],
+                                          (err) => {
+                                            if (err) {
+                                              console.error(err);
+                                              ws.send(JSON.stringify({ type: 'error', message: 'Error storing message content', originalType: 'forwardMessage' }));
+                                              return;
+                                            }
+
+                                            // Notify the sender
+                                            ws.send(JSON.stringify({
+                                              type: 'ok',
+                                              originalType: 'forwardMessage',
+                                              messageId: messageId
+                                            }));
+
+                                            // Get original sender info
+                                            dbConnection.query(
+                                                'SELECT Name FROM user WHERE UserID = ?',
+                                                [originalMessage.UserID],
+                                                (err, userResults) => {
+                                                  const originalSenderName = err || userResults.length === 0 ? 'Unknown User' : userResults[0].Name;
+
+                                                  // Notify target chat members
+                                                  dbConnection.query(
+                                                      'SELECT UserID FROM chatmember WHERE ChatID = ? AND UserID != ?',
+                                                      [targetChatId, userId],
+                                                      (err, memberResults) => {
+                                                        if (err) {
+                                                          console.error(err);
+                                                          return;
+                                                        }
+
+                                                        memberResults.forEach(member => {
+                                                          const memberId = member.UserID;
+
+                                                          const messagePacket = {
+                                                            type: 'receiveForward',
+                                                            chatId: targetChatId,
+                                                            message: {
+                                                              messageId,
+                                                              type: originalMessage.Type,
+                                                              content: originalMessage.Content,
+                                                              attachmentUrl: originalMessage.AttachmentUrl,
+                                                              senderId: userId,
+                                                              timestamp: timestamp,
+                                                              forwardedFrom: {
+                                                                messageId: originalMessageId,
+                                                                userId: originalMessage.UserID,
+                                                                senderName: originalSenderName
+                                                              }
+                                                            }
+                                                          };
+
+                                                          sendToUserConnections(app, memberId, messagePacket);
+                                                        });
+                                                      }
+                                                  );
+                                                }
+                                            );
+                                          }
+                                      );
+                                    }
+                                  }
+                              );
+                            }
+                        );
+                      }
+                  );
+                }
+            );
+            break;
+          }
+          case 'deleteMessage': {
+            const { messageId, deleteType } = packet;
+            const userId = ws.userID;
+
+            if (!userId) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Not authenticated', originalType: 'deleteMessage' }));
+              return;
+            }
+
+            if (!messageId || !deleteType) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Message ID and delete type are required', originalType: 'deleteMessage' }));
+              return;
+            }
+
+            if (!['remove', 'unsent', 'delete_for_me'].includes(deleteType)) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Invalid delete type', originalType: 'deleteMessage' }));
+              return;
+            }
+
+            // Get message details
+            dbConnection.query(
+                'SELECT m.Type, m.UserID, m.ChatID FROM message m WHERE m.MessageID = ?',
+                [messageId],
+                (err, messages) => {
+                  if (err) {
+                    console.error(err);
+                    ws.send(JSON.stringify({ type: 'error', message: 'Database error', originalType: 'deleteMessage' }));
+                    return;
+                  }
+
+                  if (messages.length === 0) {
+                    ws.send(JSON.stringify({ type: 'error', message: 'Message not found', originalType: 'deleteMessage' }));
+                    return;
+                  }
+
+                  const message = messages[0];
+
+                  // For 'unsent', verify the user is the sender
+                  if (deleteType === 'unsent' && message.UserID !== userId) {
+                    ws.send(JSON.stringify({ type: 'error', message: 'You can only unsend your own messages', originalType: 'deleteMessage' }));
+                    return;
+                  }
+
+                  // For personal deletion, create a record in message_deletions table
+                  if (deleteType === 'delete_for_me') {
+                    // Check if user is a member of the chat
+                    dbConnection.query(
+                        'SELECT COUNT(*) as isMember FROM chatmember WHERE ChatID = ? AND UserID = ?',
+                        [message.ChatID, userId],
+                        (err, memberCheck) => {
+                          if (err) {
+                            console.error(err);
+                            ws.send(JSON.stringify({ type: 'error', message: 'Database error', originalType: 'deleteMessage' }));
+                            return;
+                          }
+
+                          if (memberCheck[0].isMember === 0) {
+                            ws.send(JSON.stringify({ type: 'error', message: 'You are not a member of this chat', originalType: 'deleteMessage' }));
+                            return;
+                          }
+
+                          // Insert into message_deletions table
+                          const now = new Date();
+                          dbConnection.query(
+                              'INSERT INTO message_deletions (MessageID, UserID, DeletedTimestamp) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE DeletedTimestamp = ?',
+                              [messageId, userId, now, now],
+                              (err) => {
+                                if (err) {
+                                  console.error(err);
+                                  ws.send(JSON.stringify({ type: 'error', message: 'Error deleting message', originalType: 'deleteMessage' }));
+                                  return;
+                                }
+
+                                ws.send(JSON.stringify({
+                                  type: 'ok',
+                                  originalType: 'deleteMessage',
+                                  messageId: messageId,
+                                  deleteType: deleteType
+                                }));
+                              }
+                          );
+                        }
+                    );
+                  } else {
+                    // For 'remove' or 'unsent', update the message type
+                    let updateQuery;
+
+                    if (message.Type === 'text') {
+                      updateQuery = 'UPDATE textmessage SET Type = ? WHERE MessageID = ?';
+                    } else if (message.Type === 'attachment') {
+                      updateQuery = 'UPDATE attachmentmessage SET Type = ? WHERE MessageID = ?';
+                    } else {
+                      ws.send(JSON.stringify({ type: 'error', message: 'Unknown message type', originalType: 'deleteMessage' }));
+                      return;
+                    }
+
+                    dbConnection.query(
+                        updateQuery,
+                        [deleteType, messageId],
+                        (err, result) => {
+                          if (err) {
+                            console.error(err);
+                            ws.send(JSON.stringify({ type: 'error', message: 'Error updating message', originalType: 'deleteMessage' }));
+                            return;
+                          }
+
+                          if (result.affectedRows === 0) {
+                            ws.send(JSON.stringify({ type: 'error', message: 'Failed to update message', originalType: 'deleteMessage' }));
+                            return;
+                          }
+
+                          // Notify the requester
+                          ws.send(JSON.stringify({
+                            type: 'ok',
+                            originalType: 'deleteMessage',
+                            messageId: messageId,
+                            deleteType: deleteType
+                          }));
+
+                          // Notify other chat members
+                          dbConnection.query(
+                              'SELECT UserID FROM chatmember WHERE ChatID = ? AND UserID != ?',
+                              [message.ChatID, userId],
+                              (err, memberResults) => {
+                                if (err) {
+                                  console.error(err);
+                                  return;
+                                }
+
+                                memberResults.forEach(member => {
+                                  const memberId = member.UserID;
+
+                                  const messagePacket = {
+                                    type: 'messageDeleted',
+                                    chatId: message.ChatID,
+                                    messageId: messageId,
+                                    deleteType: deleteType,
+                                    deletedBy: userId
+                                  };
+
+                                  sendToUserConnections(app, memberId, messagePacket);
+                                });
+                              }
+                          );
+                        }
+                    );
+                  }
+                }
+            );
+            break;
+          }
           default:
             console.log('Unknown packet type:', packet.type);
             ws.send(JSON.stringify({ type: 'error', message: 'Unknown packet type', originalType: packet.type }));
