@@ -702,7 +702,7 @@ const chatModel = {
 
       // Create the new message
       const insertMessageQuery = `
-        INSERT INTO message (ChatID, UserID, Type, Timestamp, ReplyToID)
+        INSERT INTO message (ChatID, UserID, Type, Timestamp, replyTo)
         VALUES (?, ?, ?, ?, ?)
       `;
       const [messageResult] = await pool.execute(insertMessageQuery, [
@@ -885,7 +885,7 @@ const chatModel = {
       // Get messages excluding those deleted by the user
       const messagesQuery = `
         SELECT m.MessageID, m.UserID, m.Type, m.Timestamp, m.Reactions, 
-               m.ReplyToID, m.ForwardedFrom,
+               m.replyTo, m.ForwardedFrom,
                CASE
                  WHEN m.Type = 'text' THEN tm.Content
                  WHEN m.Type = 'attachment' THEN am.Content
@@ -920,7 +920,7 @@ const chatModel = {
         let forwardedFromMessage = null;
 
         // If this is a reply, get the original message
-        if (msg.ReplyToID) {
+        if (msg.replyTo) {
           const replyQuery = `
             SELECT m.MessageID, m.UserID, m.Type, m.Timestamp,
                    CASE 
@@ -939,7 +939,7 @@ const chatModel = {
             JOIN user u ON m.UserID = u.UserID
             WHERE m.MessageID = ?
           `;
-          const [replyResults] = await pool.execute(replyQuery, [msg.ReplyToID]);
+          const [replyResults] = await pool.execute(replyQuery, [msg.replyTo]);
           if (replyResults.length > 0) {
             replyToMessage = {
               messageId: replyResults[0].MessageID,

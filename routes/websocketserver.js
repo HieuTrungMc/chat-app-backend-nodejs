@@ -779,9 +779,21 @@ module.exports = (app) => {
                   const { type, content } = messagePayload;
                   const timestamp = new Date();
 
+                  // Check if this is a reply to another message
+                  const replyToId = messagePayload.replyTo ? messagePayload.replyTo : null;
+
+                  // Modified query to include replyTo if it exists
+                  const insertMessageQuery = replyToId
+                      ? 'INSERT INTO message (ChatID, UserID, Type, Timestamp, replyTo) VALUES (?, ?, ?, ?, ?)'
+                      : 'INSERT INTO message (ChatID, UserID, Type, Timestamp) VALUES (?, ?, ?, ?)';
+
+                  const insertMessageParams = replyToId
+                      ? [chatId, userId, type, timestamp, replyToId]
+                      : [chatId, userId, type, timestamp];
+
                   dbConnection.query(
-                      'INSERT INTO message (ChatID, UserID, Type, Timestamp) VALUES (?, ?, ?, ?)',
-                      [chatId, userId, type, timestamp],
+                      insertMessageQuery,
+                      insertMessageParams,
                       (err, results) => {
                         if (err) {
                           console.error(err);
@@ -791,6 +803,7 @@ module.exports = (app) => {
 
                         const messageId = results.insertId;
 
+                        // Process based on message type (text or attachment)
                         if (type === 'text') {
                           dbConnection.query(
                               'INSERT INTO textmessage (MessageID, Content) VALUES (?, ?)',
@@ -801,50 +814,129 @@ module.exports = (app) => {
                                   ws.send(JSON.stringify({ type: 'error', message: 'Error storing message content', originalType: 'sendChat' }));
                                   return;
                                 }
-                                messagePayload.messageId = messageId
-                                ws.send(JSON.stringify({
-                                  type: 'ok',
-                                  originalType: 'sendChat',
-                                  messageId: messageId,
-                                  messagePayload: messagePayload
-                                }));
-                                dbConnection.query(
-                                    'SELECT UserID FROM chatmember WHERE ChatID = ? AND UserID != ?',
-                                    [chatId, userId],
-                                    (err, memberResults) => {
-                                      if (err) {
-                                        console.error(err);
-                                        return;
-                                      }
 
-                                      console.log(`Found ${memberResults.length} other members to notify`);
+                                messagePayload.messageId = messageId;
 
-                                      memberResults.forEach(member => {
-                                        const memberId = member.UserID;
-                                        console.log(`Attempting to send message to user: ${memberId}`);
-
-                                        const messagePacket = {
-                                          type: 'receiveChat',
-                                          chatId: chatId,
-                                          message: {
-                                            ...messagePayload,
-                                            messageId,
-                                            type,
-                                            content,
-                                            senderId: userId,
-                                            timestamp: timestamp
-                                          }
-                                        };
-
-                                        const sentCount = sendToUserConnections(app, memberId, messagePacket);
-                                        if (sentCount > 0) {
-                                          console.log(`Message sent to ${sentCount} connections of user ${memberId}`);
-                                        } else {
-                                          console.log(`No active connections found for user ${memberId}`);
+                                // If this is a reply, get the original message details to include in responses
+                                if (replyToId) {
+                                  dbConnection.query(
+                                      `SELECT m.MessageID, m.UserID, m.Type, m.Timestamp,
+                      CASE 
+                        WHEN m.Type = 'text' THEN tm.Content
+                        WHEN m.Type = 'attachment' THEN am.Content
+                        ELSE NULL
+                      END as Content,
+                      CASE
+                        WHEN m.Type = 'attachment' THEN am.AttachmentUrl
+                        ELSE NULL
+                      END as AttachmentUrl,
+                      u.Name as SenderName
+                    FROM message m
+                    LEFT JOIN textmessage tm ON m.MessageID = tm.MessageID
+                    LEFT JOIN attachmentmessage am ON m.MessageID = am.MessageID
+                    JOIN user u ON m.UserID = u.UserID
+                    WHERE m.MessageID = ?`,
+                                      [replyToId],
+                                      (err, originalMessages) => {
+                                        if (err) {
+                                          console.error(err);
+                                          // Still send the message, just without reply details
+                                          sendMessageWithoutReplyDetails();
+                                          return;
                                         }
-                                      });
-                                    }
-                                );
+
+                                        const originalMessage = originalMessages.length > 0 ? originalMessages[0] : null;
+
+                                        // Send response to sender
+                                        ws.send(JSON.stringify({
+                                          type: 'ok',
+                                          originalType: 'sendChat',
+                                          messageId: messageId,
+                                          messagePayload: {
+                                            ...messagePayload,
+                                            replyTo: originalMessage ? {
+                                              messageId: originalMessage.MessageID,
+                                              userId: originalMessage.UserID,
+                                              type: originalMessage.Type,
+                                              content: originalMessage.Content,
+                                              attachmentUrl: originalMessage.AttachmentUrl,
+                                              senderName: originalMessage.SenderName,
+                                              timestamp: originalMessage.Timestamp
+                                            } : null
+                                          }
+                                        }));
+
+                                        // Notify other chat members
+                                        notifyOtherMembers(originalMessage);
+                                      }
+                                  );
+                                } else {
+                                  // Regular message without reply
+                                  sendMessageWithoutReplyDetails();
+                                }
+
+                                function sendMessageWithoutReplyDetails() {
+                                  ws.send(JSON.stringify({
+                                    type: 'ok',
+                                    originalType: 'sendChat',
+                                    messageId: messageId,
+                                    messagePayload: messagePayload
+                                  }));
+
+                                  // Notify other chat members
+                                  notifyOtherMembers();
+                                }
+
+                                function notifyOtherMembers(originalMessage = null) {
+                                  dbConnection.query(
+                                      'SELECT UserID FROM chatmember WHERE ChatID = ? AND UserID != ?',
+                                      [chatId, userId],
+                                      (err, memberResults) => {
+                                        if (err) {
+                                          console.error(err);
+                                          return;
+                                        }
+
+                                        console.log(`Found ${memberResults.length} other members to notify`);
+
+                                        memberResults.forEach(member => {
+                                          const memberId = member.UserID;
+                                          console.log(`Attempting to send message to user: ${memberId}`);
+
+                                          const messagePacket = {
+                                            type: originalMessage ? 'receiveReply' : 'receiveChat',
+                                            chatId: chatId,
+                                            message: {
+                                              ...messagePayload,
+                                              messageId,
+                                              type,
+                                              content,
+                                              senderId: userId,
+                                              timestamp: timestamp,
+                                              ...(originalMessage && {
+                                                replyTo: {
+                                                  messageId: originalMessage.MessageID,
+                                                  userId: originalMessage.UserID,
+                                                  type: originalMessage.Type,
+                                                  content: originalMessage.Content,
+                                                  attachmentUrl: originalMessage.AttachmentUrl,
+                                                  senderName: originalMessage.SenderName,
+                                                  timestamp: originalMessage.Timestamp
+                                                }
+                                              })
+                                            }
+                                          };
+
+                                          const sentCount = sendToUserConnections(app, memberId, messagePacket);
+                                          if (sentCount > 0) {
+                                            console.log(`Message sent to ${sentCount} connections of user ${memberId}`);
+                                          } else {
+                                            console.log(`No active connections found for user ${memberId}`);
+                                          }
+                                        });
+                                      }
+                                  );
+                                }
                               }
                           );
                         } else if (type === 'attachment') {
@@ -858,53 +950,130 @@ module.exports = (app) => {
                                   ws.send(JSON.stringify({ type: 'error', message: 'Error storing message content', originalType: 'sendChat' }));
                                   return;
                                 }
-                                messagePayload.messageId = messageId
 
-                                ws.send(JSON.stringify({
-                                  type: 'ok',
-                                  originalType: 'sendChat',
-                                  messageId: messageId,
-                                  messagePayload: messagePayload
-                                }));
+                                messagePayload.messageId = messageId;
 
-                                dbConnection.query(
-                                    'SELECT UserID FROM chatmember WHERE ChatID = ? AND UserID != ?',
-                                    [chatId, userId],
-                                    (err, memberResults) => {
-                                      if (err) {
-                                        console.error(err);
-                                        return;
-                                      }
-
-                                      console.log(`Found ${memberResults.length} other members to notify for attachment`);
-
-                                      memberResults.forEach(member => {
-                                        const memberId = member.UserID
-                                        console.log(`Attempting to send attachment message to user: ${memberId}`);
-
-                                        const messagePacket = {
-                                          type: 'receiveChat',
-                                          chatId: chatId,
-                                          message: {
-                                            ...messagePayload,
-                                            messageId,
-                                            type,
-                                            content,
-                                            attachmentUrl,
-                                            senderId: userId,
-                                            timestamp: timestamp
-                                          }
-                                        };
-
-                                        const sentCount = sendToUserConnections(app, memberId, messagePacket);
-                                        if (sentCount > 0) {
-                                          console.log(`Attachment message sent to ${sentCount} connections of user ${memberId}`);
-                                        } else {
-                                          console.log(`No active connections found for user ${memberId}`);
+                                // If this is a reply, get the original message details to include in responses
+                                if (replyToId) {
+                                  dbConnection.query(
+                                      `SELECT m.MessageID, m.UserID, m.Type, m.Timestamp,
+                      CASE 
+                        WHEN m.Type = 'text' THEN tm.Content
+                        WHEN m.Type = 'attachment' THEN am.Content
+                        ELSE NULL
+                      END as Content,
+                      CASE
+                        WHEN m.Type = 'attachment' THEN am.AttachmentUrl
+                        ELSE NULL
+                      END as AttachmentUrl,
+                      u.Name as SenderName
+                    FROM message m
+                    LEFT JOIN textmessage tm ON m.MessageID = tm.MessageID
+                    LEFT JOIN attachmentmessage am ON m.MessageID = am.MessageID
+                    JOIN user u ON m.UserID = u.UserID
+                    WHERE m.MessageID = ?`,
+                                      [replyToId],
+                                      (err, originalMessages) => {
+                                        if (err) {
+                                          console.error(err);
+                                          // Still send the message, just without reply details
+                                          sendAttachmentWithoutReplyDetails();
+                                          return;
                                         }
-                                      });
-                                    }
-                                );
+
+                                        const originalMessage = originalMessages.length > 0 ? originalMessages[0] : null;
+
+                                        // Send response to sender
+                                        ws.send(JSON.stringify({
+                                          type: 'ok',
+                                          originalType: 'sendChat',
+                                          messageId: messageId,
+                                          messagePayload: {
+                                            ...messagePayload,
+                                            replyTo: originalMessage ? {
+                                              messageId: originalMessage.MessageID,
+                                              userId: originalMessage.UserID,
+                                              type: originalMessage.Type,
+                                              content: originalMessage.Content,
+                                              attachmentUrl: originalMessage.AttachmentUrl,
+                                              senderName: originalMessage.SenderName,
+                                              timestamp: originalMessage.Timestamp
+                                            } : null
+                                          }
+                                        }));
+
+                                        // Notify other chat members
+                                        notifyOtherMembersForAttachment(originalMessage);
+                                      }
+                                  );
+                                } else {
+                                  // Regular message without reply
+                                  sendAttachmentWithoutReplyDetails();
+                                }
+
+                                function sendAttachmentWithoutReplyDetails() {
+                                  ws.send(JSON.stringify({
+                                    type: 'ok',
+                                    originalType: 'sendChat',
+                                    messageId: messageId,
+                                    messagePayload: messagePayload
+                                  }));
+
+                                  // Notify other chat members
+                                  notifyOtherMembersForAttachment();
+                                }
+
+                                function notifyOtherMembersForAttachment(originalMessage = null) {
+                                  dbConnection.query(
+                                      'SELECT UserID FROM chatmember WHERE ChatID = ? AND UserID != ?',
+                                      [chatId, userId],
+                                      (err, memberResults) => {
+                                        if (err) {
+                                          console.error(err);
+                                          return;
+                                        }
+
+                                        console.log(`Found ${memberResults.length} other members to notify for attachment`);
+
+                                        memberResults.forEach(member => {
+                                          const memberId = member.UserID;
+                                          console.log(`Attempting to send attachment message to user: ${memberId}`);
+
+                                          const messagePacket = {
+                                            type: originalMessage ? 'receiveReply' : 'receiveChat',
+                                            chatId: chatId,
+                                            message: {
+                                              ...messagePayload,
+                                              messageId,
+                                              type,
+                                              content,
+                                              attachmentUrl,
+                                              senderId: userId,
+                                              timestamp: timestamp,
+                                              ...(originalMessage && {
+                                                replyTo: {
+                                                  messageId: originalMessage.MessageID,
+                                                  userId: originalMessage.UserID,
+                                                  type: originalMessage.Type,
+                                                  content: originalMessage.Content,
+                                                  attachmentUrl: originalMessage.AttachmentUrl,
+                                                  senderName: originalMessage.SenderName,
+                                                  timestamp: originalMessage.Timestamp
+                                                }
+                                              })
+                                            }
+                                          };
+
+                                          const sentCount = sendToUserConnections(app, memberId, messagePacket);
+                                          if (sentCount > 0) {
+                                            console.log(`Attachment message sent to ${sentCount} connections of user ${memberId}`);
+                                          } else {
+                                            console.log(`No active connections found for user ${memberId}`);
+                                          }
+                                        });
+                                      }
+                                  );
+                                }
                               }
                           );
                         } else {
@@ -1062,7 +1231,7 @@ module.exports = (app) => {
 
                         // Create the new message
                         dbConnection.query(
-                            'INSERT INTO message (ChatID, UserID, Type, Timestamp, ReplyToID) VALUES (?, ?, ?, ?, ?)',
+                            'INSERT INTO message (ChatID, UserID, Type, Timestamp, replyTo) VALUES (?, ?, ?, ?, ?)',
                             [chatId, userId, messageType, timestamp, originalMessageId],
                             (err, messageResult) => {
                               if (err) {
