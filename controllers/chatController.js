@@ -79,7 +79,10 @@ Controller.getChatHistory = async (req, res) => {
       return res.status(403).json(messages);
     }
 
-    return res.json(messages);
+    return res.status(200).json({
+      success: true,
+      data: messages
+    });
   } catch (error) {
     console.error("Error in getChatHistory controller:", error);
     return res.status(500).json({
