@@ -484,7 +484,6 @@ const chatModel = {
 
   searchChatsByName: async (userId, searchQuery) => {
     try {
-      // Query to search for chats by name where the user is a member
       const query = `
         SELECT c.ChatID, c.CreatedDate, c.Type, c.Status, c.Owner, c.ChatImage, c.ChatName
         FROM chat c
@@ -563,15 +562,15 @@ const chatModel = {
             if (users.length > 0) {
               const otherUser = users[0];
 
-              // For private chats, only include if the other user's name matches the search query
               if (searchQuery && chat.Type === 'private') {
                 if (!otherUser.name || !otherUser.name.toLowerCase().includes(searchQuery.toLowerCase())) {
-                  return null; // Skip this chat if name doesn't match
+                  return null;
 }
               }
 
               return {
                 ...chat,
+                id: userId,
                 chatName: otherUser.name || 'Unknown User',
                 imageUrl: otherUser.image || '',
                 otherUserId: otherUserId,
