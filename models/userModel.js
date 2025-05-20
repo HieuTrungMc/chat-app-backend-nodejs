@@ -66,6 +66,26 @@ const model = {
     }
   },
 
+  getAccountByName: async (name) => {
+    try {
+      const query = `
+        SELECT UserID as id, Name as name, Phone as phone, Email as email, 
+               ImageUrl as image, Location as location, Birthday as birthday
+        FROM user
+        WHERE Name LIKE ?
+        LIMIT 20
+      `;
+
+      const searchPattern = `%${name}%`;
+      const [results] = await pool.execute(query, [searchPattern]);
+
+      return results;
+    } catch (error) {
+      console.error("Error in getAccountByName:", error);
+      throw error;
+    }
+  },
+
   updateAccount: async (accId, updateData) => {
     try {
       // First check if the user exists
@@ -83,7 +103,7 @@ const model = {
         location: 'Location',
         birthday: 'Birthday',
         email: 'Email'
-      };
+};
 
       if (userExists) {
         // User exists, perform UPDATE

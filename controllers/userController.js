@@ -31,9 +31,18 @@ Controller.getAccountByParam = async (req, res) => {
         res.status(500).send("Error getting account")
       }
       break;
+    case (req.query.name) !== undefined:
+      const { name } = req.query
+      try {
+        const accounts = await userModel.getAccountByName(name)
+        res.status(200).json(accounts)
+  } catch (error) {
+        res.status(500).send("Error getting account")
+  }
+      break;
     default:
       res.status(400).send("Bad request")
-  }
+}
 };
 
 Controller.updateAccount = async (req, res) => {
@@ -43,11 +52,11 @@ Controller.updateAccount = async (req, res) => {
   }
   try {
     const newInfo = await userModel.updateAccount(id, {
-      name,
-      password,
-      phone,
-      birthday,
-      location,
+        name,
+        password,
+        phone,
+        birthday,
+        location,
       email,
       image
     })
