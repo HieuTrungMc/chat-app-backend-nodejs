@@ -66,6 +66,42 @@ Controller.findByPhone = async (req, res) => {
 };
 
 
+Controller.findByName = async (req, res) => {
+  try {
+    const name = req.query.name;
+    const userId = req.query.userId;
+
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        message: "Name is required"
+      });
+    }
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "User ID is required"
+      });
+    }
+
+    const users = await ContactModel.findByName(name, userId);
+
+    return res.status(200).json({
+      success: true,
+      data: users
+    });
+  } catch (error) {
+    console.error("Error finding users by name:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to find users",
+      error: error.message
+    });
+  }
+};
+
+
 Controller.addContact = async (req, res) => {
   try {
     const userId = req.query.userId;
@@ -105,7 +141,6 @@ Controller.addContact = async (req, res) => {
 Controller.listRequests = async (req, res) => {
   try {
     const userId = req.query.userId;
-
     if (!userId) {
       return res.status(400).json({
         success: false,
@@ -223,6 +258,111 @@ Controller.listSentRequests = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to fetch sent friend requests",
+      error: error.message
+    });
+  }
+};
+
+Controller.unfriendContact = async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    const contactId = req.query.contactId;
+
+    if (!userId || !contactId) {
+      return res.status(400).json({
+        success: false,
+        message: "Both user ID and contact ID are required"
+      });
+    }
+
+    const result = await ContactModel.unfriendContact(userId, contactId);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    console.error("Error unfriending contact:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to unfriend contact",
+      error: error.message
+    });
+  }
+};
+
+Controller.blockContact = async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    const contactId = req.query.contactId;
+
+    if (!userId || !contactId) {
+      return res.status(400).json({
+        success: false,
+        message: "Both user ID and contact ID are required"
+      });
+    }
+
+    const result = await ContactModel.blockContact(userId, contactId);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    console.error("Error blocking contact:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to block contact",
+      error: error.message
+    });
+  }
+};
+
+Controller.unblockContact = async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    const contactId = req.query.contactId;
+
+    if (!userId || !contactId) {
+      return res.status(400).json({
+        success: false,
+        message: "Both user ID and contact ID are required"
+      });
+    }
+
+    const result = await ContactModel.unblockContact(userId, contactId);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: result.message
+    });
+  } catch (error) {
+    console.error("Error unblocking contact:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to unblock contact",
       error: error.message
     });
   }
