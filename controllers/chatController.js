@@ -71,7 +71,7 @@ Controller.getChatInfo = async (req, res) => {
 Controller.getChatHistory = async (req, res) => {
   try {
     const { chatId, count } = req.params;
-    const userId = req.user.id;
+    const userId = req.query.userId;
 
     const messages = await ChatModel.getChatHistoryWithDeletions(chatId, parseInt(count), userId);
 
@@ -161,7 +161,7 @@ Controller.searchChatsByName = async (req, res) => {
 Controller.deleteMessage = async (req, res) => {
   try {
     const { messageId, deleteType } = req.body;
-    const userId = req.user.id;
+    const userId = req.query.userId;
 
     if (!messageId || !deleteType) {
       return res.status(400).json({
@@ -216,7 +216,7 @@ Controller.getOrCreatePrivateChat = async (req, res) => {
 Controller.replyToMessage = async (req, res) => {
   try {
     const { chatId, originalMessageId, content, type, attachmentUrl } = req.body;
-    const userId = req.user.id;
+    const userId = req.query.userId;
 
     if (!chatId || !originalMessageId || !content) {
       return res.status(400).json({
@@ -251,7 +251,7 @@ Controller.replyToMessage = async (req, res) => {
 Controller.forwardMessage = async (req, res) => {
   try {
     const { originalMessageId, targetChatId } = req.body;
-    const userId = req.user.id;
+    const userId = req.query.userId;
 
     if (!originalMessageId || !targetChatId) {
       return res.status(400).json({
