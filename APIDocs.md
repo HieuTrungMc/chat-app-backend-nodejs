@@ -1,42 +1,33 @@
-# Chat Application API Documentation
+# Tài liệu API Ứng dụng Trò chuyện
 
-This document provides detailed information about the REST API endpoints available in the Chat Application backend.
+Tài liệu này cung cấp thông tin chi tiết về các điểm cuối REST API có sẵn trong backend của Ứng dụng Trò chuyện.
 
-## Table of Contents
+## Mục lục
 
-- [Overview](#overview)
-- [Authentication](#authentication)
-- [User API](#user-api)
-- [Chat API](#chat-api)
-- [Contact API](#contact-api)
-- [Group Chat API](#group-chat-api)
+- [Tổng quan](#tổng-quan)
+- [API Người dùng](#api-người-dùng)
+- [API Trò chuyện](#api-trò-chuyện)
+- [API Danh bạ](#api-danh-bạ)
+- [API Trò chuyện Nhóm](#api-trò-chuyện-nhóm)
 
-## Overview
+## Tổng quan
 
-The Chat Application API is a RESTful API that provides endpoints for user management, chat functionality, contact management, and group chat functionality. The API is built using Express.js and uses JSON for request and response bodies.
+API Ứng dụng Trò chuyện là một API RESTful cung cấp các điểm cuối cho quản lý người dùng, chức năng trò chuyện, quản lý danh bạ và chức năng trò chuyện nhóm. API được xây dựng bằng Express.js và sử dụng JSON cho các phần thân yêu cầu và phản hồi.
 
-Base URL: `http://localhost:{PORT}`
+URL cơ sở: `http://localhost:{PORT}`
 
-## Authentication
+## API Người dùng
 
-Most endpoints require authentication. After logging in, you'll receive a token that should be included in the Authorization header of subsequent requests:
+Đường dẫn cơ sở: `/user`
 
-```
-Authorization: Bearer {token}
-```
+### Đăng ký Tài khoản
 
-## User API
-
-Base path: `/user`
-
-### Register Account
-
-Creates a new user account.
+Tạo một tài khoản người dùng mới.
 
 - **URL**: `/user/signup`
-- **Method**: `POST`
-- **Auth required**: No
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Không
+- **Thân yêu cầu**:
   ```json
   {
     "username": "johndoe",
@@ -45,105 +36,105 @@ Creates a new user account.
     "phone": "1234567890"
   }
   ```
-- **Success Response**:
-  - **Code**: 201 CREATED
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": "Account created successfully",
-      "userId": "123456789"
-    }
-    ```
-- **Error Response**:
-  - **Code**: 400 BAD REQUEST
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "Email already in use"
-    }
-    ```
+- **Phản hồi thành công**:
+    - **Mã**: 201 CREATED
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": "Account created successfully",
+        "userId": "123456789"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 400 BAD REQUEST
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "Email already in use"
+      }
+      ```
 
-### Get Account by Parameter
+### Lấy Tài khoản theo Tham số
 
-Retrieves user account information based on query parameters.
+Truy xuất thông tin tài khoản người dùng dựa trên các tham số truy vấn.
 
 - **URL**: `/user/account`
-- **Method**: `GET`
-- **Auth required**: Yes
-- **URL Parameters**:
-  - `id=[string]` or
-  - `email=[string]` or
-  - `phone=[string]`
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "id": "123456789",
-      "username": "johndoe",
-      "email": "john@example.com",
-      "phone": "1234567890",
-      "profilePicture": "url_to_image"
-    }
-    ```
-- **Error Response**:
-  - **Code**: 404 NOT FOUND
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "User not found"
-    }
-    ```
+- **Phương thức**: `GET`
+- **Yêu cầu xác thực**: Có
+- **Tham số URL**:
+    - `id=[string]` hoặc
+    - `email=[string]` hoặc
+    - `phone=[string]`
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "id": "123456789",
+        "username": "johndoe",
+        "email": "john@example.com",
+        "phone": "1234567890",
+        "profilePicture": "url_to_image"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 404 NOT FOUND
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "User not found"
+      }
+      ```
 
-### Login Account
+### Đăng nhập Tài khoản
 
-Authenticates a user and returns a token.
+Xác thực người dùng và trả về một token.
 
 - **URL**: `/user/login`
-- **Method**: `POST`
-- **Auth required**: No
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Không
+- **Thân yêu cầu**:
   ```json
   {
     "email": "john@example.com",
     "password": "securepassword"
   }
   ```
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "token": "jwt_token_here",
-      "user": {
-        "id": "123456789",
-        "username": "johndoe",
-        "email": "john@example.com"
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "token": "jwt_token_here",
+        "user": {
+          "id": "123456789",
+          "username": "johndoe",
+          "email": "john@example.com"
+        }
       }
-    }
-    ```
-- **Error Response**:
-  - **Code**: 401 UNAUTHORIZED
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "Invalid credentials"
-    }
-    ```
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 401 UNAUTHORIZED
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "Invalid credentials"
+      }
+      ```
 
-### Update Account
+### Cập nhật Tài khoản
 
-Updates user account information.
+Cập nhật thông tin tài khoản người dùng.
 
 - **URL**: `/user/update`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Thân yêu cầu**:
   ```json
   {
     "username": "newusername",
@@ -151,337 +142,337 @@ Updates user account information.
     "phone": "0987654321"
   }
   ```
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": "Account updated successfully"
-    }
-    ```
-- **Error Response**:
-  - **Code**: 400 BAD REQUEST
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "Email already in use"
-    }
-    ```
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": "Account updated successfully"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 400 BAD REQUEST
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "Email already in use"
+      }
+      ```
 
-### Upload Profile Image
+### Tải lên Ảnh Hồ sơ
 
-Uploads a profile image for the user.
+Tải lên ảnh hồ sơ cho người dùng.
 
 - **URL**: `/user/upload`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Content-Type**: `multipart/form-data`
-- **Request Body**:
-  - `image`: The image file to upload
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": "Image uploaded successfully",
-      "imageUrl": "url_to_image"
-    }
-    ```
-- **Error Response**:
-  - **Code**: 400 BAD REQUEST
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "Invalid file type"
-    }
-    ```
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Loại nội dung**: `multipart/form-data`
+- **Thân yêu cầu**:
+    - `image`: Tệp ảnh cần tải lên
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": "Image uploaded successfully",
+        "imageUrl": "url_to_image"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 400 BAD REQUEST
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "Invalid file type"
+      }
+      ```
 
-### Change Password
+### Đổi Mật khẩu
 
-Changes the user's password.
+Thay đổi mật khẩu của người dùng.
 
 - **URL**: `/user/changepass`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Thân yêu cầu**:
   ```json
   {
     "currentPassword": "oldpassword",
     "newPassword": "newpassword"
   }
   ```
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": "Password changed successfully"
-    }
-    ```
-- **Error Response**:
-  - **Code**: 401 UNAUTHORIZED
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "Current password is incorrect"
-    }
-    ```
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": "Password changed successfully"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 401 UNAUTHORIZED
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "Current password is incorrect"
+      }
+      ```
 
-### Generate 2FA Secret
+### Tạo Bí mật 2FA
 
-Generates a two-factor authentication secret for the user.
+Tạo bí mật xác thực hai yếu tố cho người dùng.
 
 - **URL**: `/user/2fa`
-- **Method**: `GET`
-- **Auth required**: Yes
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "secret": "2fa_secret_key",
-      "qrCodeUrl": "url_to_qr_code"
-    }
-    ```
+- **Phương thức**: `GET`
+- **Yêu cầu xác thực**: Có
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "secret": "2fa_secret_key",
+        "qrCodeUrl": "url_to_qr_code"
+      }
+      ```
 
-### Verify 2FA Code
+### Xác minh Mã 2FA
 
-Verifies a two-factor authentication code.
+Xác minh mã xác thực hai yếu tố.
 
 - **URL**: `/user/2fa/verify`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Thân yêu cầu**:
   ```json
   {
     "code": "123456"
   }
   ```
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": "Code verified successfully"
-    }
-    ```
-- **Error Response**:
-  - **Code**: 401 UNAUTHORIZED
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "Invalid code"
-    }
-    ```
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": "Code verified successfully"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 401 UNAUTHORIZED
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "Invalid code"
+      }
+      ```
 
-## Chat API
+## API Trò chuyện
 
-Base path: `/chat`
+Đường dẫn cơ sở: `/chat`
 
-### Get Main Path
+### Lấy Đường dẫn Chính
 
-Returns the main chat page.
+Trả về trang trò chuyện chính.
 
 - **URL**: `/chat/`
-- **Method**: `GET`
-- **Auth required**: Yes
-- **Success Response**:
-  - **Code**: 200 OK
+- **Phương thức**: `GET`
+- **Yêu cầu xác thực**: Có
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
 
-### Get User Chats
+### Lấy Trò chuyện của Người dùng
 
-Retrieves all chats for the authenticated user.
+Truy xuất tất cả các cuộc trò chuyện cho người dùng đã xác thực.
 
 - **URL**: `/chat/me`
-- **Method**: `GET`
-- **Auth required**: Yes
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "chats": [
-        {
-          "id": "chat123",
-          "name": "Chat with Jane",
-          "type": "private",
-          "lastMessage": {
-            "id": "msg456",
-            "content": "Hello there!",
-            "sender": "user789",
-            "timestamp": "2023-05-20T10:30:00Z"
+- **Phương thức**: `GET`
+- **Yêu cầu xác thực**: Có
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "chats": [
+          {
+            "id": "chat123",
+            "name": "Chat with Jane",
+            "type": "private",
+            "lastMessage": {
+              "id": "msg456",
+              "content": "Hello there!",
+              "sender": "user789",
+              "timestamp": "2023-05-20T10:30:00Z"
+            }
           }
-        }
-      ]
-    }
-    ```
+        ]
+      }
+      ```
 
-### Search Chats by Name
+### Tìm kiếm Trò chuyện theo Tên
 
-Searches for chats by name.
+Tìm kiếm các cuộc trò chuyện theo tên.
 
 - **URL**: `/chat/search`
-- **Method**: `GET`
-- **Auth required**: Yes
-- **URL Parameters**:
-  - `query=[string]`: The search query
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "chats": [
-        {
-          "id": "chat123",
-          "name": "Chat with Jane",
-          "type": "private"
-        }
-      ]
-    }
-    ```
+- **Phương thức**: `GET`
+- **Yêu cầu xác thực**: Có
+- **Tham số URL**:
+    - `query=[string]`: Truy vấn tìm kiếm
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "chats": [
+          {
+            "id": "chat123",
+            "name": "Chat with Jane",
+            "type": "private"
+          }
+        ]
+      }
+      ```
 
-### Get Chat Info
+### Lấy Thông tin Trò chuyện
 
-Retrieves information about a specific chat.
+Truy xuất thông tin về một cuộc trò chuyện cụ thể.
 
 - **URL**: `/chat/:chatId/info`
-- **Method**: `GET`
-- **Auth required**: Yes
-- **URL Parameters**:
-  - `chatId=[string]`: The ID of the chat
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "id": "chat123",
-      "name": "Chat with Jane",
-      "type": "private",
-      "participants": [
-        {
-          "id": "user456",
-          "username": "janedoe"
-        }
-      ],
-      "createdAt": "2023-05-01T12:00:00Z"
-    }
-    ```
-- **Error Response**:
-  - **Code**: 404 NOT FOUND
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "Chat not found"
-    }
-    ```
+- **Phương thức**: `GET`
+- **Yêu cầu xác thực**: Có
+- **Tham số URL**:
+    - `chatId=[string]`: ID của cuộc trò chuyện
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "id": "chat123",
+        "name": "Chat with Jane",
+        "type": "private",
+        "participants": [
+          {
+            "id": "user456",
+            "username": "janedoe"
+          }
+        ],
+        "createdAt": "2023-05-01T12:00:00Z"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 404 NOT FOUND
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "Chat not found"
+      }
+      ```
 
-### Get Chat History
+### Lấy Lịch sử Trò chuyện
 
-Retrieves the message history for a specific chat.
+Truy xuất lịch sử tin nhắn cho một cuộc trò chuyện cụ thể.
 
 - **URL**: `/chat/:chatId/history/:count`
-- **Method**: `GET`
-- **Auth required**: Yes
-- **URL Parameters**:
-  - `chatId=[string]`: The ID of the chat
-  - `count=[number]`: The number of messages to retrieve
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "messages": [
-        {
-          "id": "msg123",
-          "content": "Hello!",
-          "sender": {
-            "id": "user456",
-            "username": "janedoe"
-          },
-          "timestamp": "2023-05-20T10:30:00Z"
-        }
-      ]
-    }
-    ```
+- **Phương thức**: `GET`
+- **Yêu cầu xác thực**: Có
+- **Tham số URL**:
+    - `chatId=[string]`: ID của cuộc trò chuyện
+    - `count=[number]`: Số lượng tin nhắn cần truy xuất
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "messages": [
+          {
+            "id": "msg123",
+            "content": "Hello!",
+            "sender": {
+              "id": "user456",
+              "username": "janedoe"
+            },
+            "timestamp": "2023-05-20T10:30:00Z"
+          }
+        ]
+      }
+      ```
 
-### Search Messages
+### Tìm kiếm Tin nhắn
 
-Searches for messages within a chat.
+Tìm kiếm tin nhắn trong một cuộc trò chuyện.
 
 - **URL**: `/chat/:chatId/search`
-- **Method**: `GET`
-- **Auth required**: Yes
-- **URL Parameters**:
-  - `chatId=[string]`: The ID of the chat
-  - `query=[string]`: The search query
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "messages": [
-        {
-          "id": "msg123",
-          "content": "Hello!",
-          "sender": {
-            "id": "user456",
-            "username": "janedoe"
-          },
-          "timestamp": "2023-05-20T10:30:00Z"
-        }
-      ]
-    }
-    ```
+- **Phương thức**: `GET`
+- **Yêu cầu xác thực**: Có
+- **Tham số URL**:
+    - `chatId=[string]`: ID của cuộc trò chuyện
+    - `query=[string]`: Truy vấn tìm kiếm
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "messages": [
+          {
+            "id": "msg123",
+            "content": "Hello!",
+            "sender": {
+              "id": "user456",
+              "username": "janedoe"
+            },
+            "timestamp": "2023-05-20T10:30:00Z"
+          }
+        ]
+      }
+      ```
 
-### Delete Message
+### Xóa Tin nhắn
 
-Deletes a message.
+Xóa một tin nhắn.
 
 - **URL**: `/chat/deleteMsg`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Thân yêu cầu**:
   ```json
   {
     "messageId": "msg123"
   }
   ```
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": "Message deleted successfully"
-    }
-    ```
-- **Error Response**:
-  - **Code**: 403 FORBIDDEN
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "You don't have permission to delete this message"
-    }
-    ```
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": "Message deleted successfully"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 403 FORBIDDEN
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "You don't have permission to delete this message"
+      }
+      ```
 
-### Reply to Message
+### Trả lời Tin nhắn
 
-Replies to a message.
+Trả lời một tin nhắn.
 
 - **URL**: `/chat/replyToMsg`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Thân yêu cầu**:
   ```json
   {
     "chatId": "chat123",
@@ -489,501 +480,501 @@ Replies to a message.
     "content": "This is a reply"
   }
   ```
-- **Success Response**:
-  - **Code**: 201 CREATED
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": {
-        "id": "msg789",
-        "content": "This is a reply",
-        "replyTo": "msg456",
-        "sender": "user123",
-        "timestamp": "2023-05-20T11:30:00Z"
+- **Phản hồi thành công**:
+    - **Mã**: 201 CREATED
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": {
+          "id": "msg789",
+          "content": "This is a reply",
+          "replyTo": "msg456",
+          "sender": "user123",
+          "timestamp": "2023-05-20T11:30:00Z"
+        }
       }
-    }
-    ```
+      ```
 
-### Forward Message
+### Chuyển tiếp Tin nhắn
 
-Forwards a message to another chat.
+Chuyển tiếp một tin nhắn đến một cuộc trò chuyện khác.
 
 - **URL**: `/chat/forwardMsg`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Thân yêu cầu**:
   ```json
   {
     "messageId": "msg123",
     "targetChatId": "chat456"
   }
   ```
-- **Success Response**:
-  - **Code**: 201 CREATED
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": {
-        "id": "msg789",
-        "content": "Forwarded message content",
-        "forwardedFrom": "msg123",
-        "sender": "user123",
-        "timestamp": "2023-05-20T11:30:00Z"
+- **Phản hồi thành công**:
+    - **Mã**: 201 CREATED
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": {
+          "id": "msg789",
+          "content": "Forwarded message content",
+          "forwardedFrom": "msg123",
+          "sender": "user123",
+          "timestamp": "2023-05-20T11:30:00Z"
+        }
       }
-    }
-    ```
+      ```
 
-### Get or Create Private Chat
+### Lấy hoặc Tạo Trò chuyện Riêng tư
 
-Gets an existing private chat or creates a new one.
+Lấy một cuộc trò chuyện riêng tư hiện có hoặc tạo một cuộc mới.
 
 - **URL**: `/chat/private`
-- **Method**: `GET`
-- **Auth required**: Yes
-- **URL Parameters**:
-  - `userId=[string]`: The ID of the user to chat with
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "chatId": "chat123",
-      "isNew": false
-    }
-    ```
-  - Or if a new chat was created:
-    ```json
-    {
-      "chatId": "chat456",
-      "isNew": true
-    }
-    ```
+- **Phương thức**: `GET`
+- **Yêu cầu xác thực**: Có
+- **Tham số URL**:
+    - `userId=[string]`: ID của người dùng để trò chuyện
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "chatId": "chat123",
+        "isNew": false
+      }
+      ```
+    - Hoặc nếu một cuộc trò chuyện mới được tạo:
+      ```json
+      {
+        "chatId": "chat456",
+        "isNew": true
+      }
+      ```
 
-## Contact API
+## API Danh bạ
 
-Base path: `/contact`
+Đường dẫn cơ sở: `/contact`
 
-### List Contacts
+### Liệt kê Danh bạ
 
-Retrieves the list of contacts for the authenticated user.
+Truy xuất danh sách liên hệ cho người dùng đã xác thực.
 
 - **URL**: `/contact/list`
-- **Method**: `GET`
-- **Auth required**: Yes
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "contacts": [
-        {
+- **Phương thức**: `GET`
+- **Yêu cầu xác thực**: Có
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "contacts": [
+          {
+            "id": "user123",
+            "username": "janedoe",
+            "phone": "1234567890",
+            "email": "jane@example.com",
+            "profilePicture": "url_to_image"
+          }
+        ]
+      }
+      ```
+
+### Tìm Liên hệ theo Số điện thoại
+
+Tìm một liên hệ theo số điện thoại.
+
+- **URL**: `/contact/find`
+- **Phương thức**: `GET`
+- **Yêu cầu xác thực**: Có
+- **Tham số URL**:
+    - `phone=[string]`: Số điện thoại cần tìm kiếm
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "user": {
           "id": "user123",
           "username": "janedoe",
           "phone": "1234567890",
           "email": "jane@example.com",
           "profilePicture": "url_to_image"
         }
-      ]
-    }
-    ```
-
-### Find Contact by Phone
-
-Finds a contact by phone number.
-
-- **URL**: `/contact/find`
-- **Method**: `GET`
-- **Auth required**: Yes
-- **URL Parameters**:
-  - `phone=[string]`: The phone number to search for
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "user": {
-        "id": "user123",
-        "username": "janedoe",
-        "phone": "1234567890",
-        "email": "jane@example.com",
-        "profilePicture": "url_to_image"
       }
-    }
-    ```
-- **Error Response**:
-  - **Code**: 404 NOT FOUND
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "User not found"
-    }
-    ```
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 404 NOT FOUND
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "User not found"
+      }
+      ```
 
-### Add Contact
+### Thêm Liên hệ
 
-Sends a contact request to another user.
+Gửi yêu cầu liên hệ đến một người dùng khác.
 
 - **URL**: `/contact/add`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Thân yêu cầu**:
   ```json
   {
     "userId": "user123"
   }
   ```
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": "Contact request sent"
-    }
-    ```
-- **Error Response**:
-  - **Code**: 400 BAD REQUEST
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "Contact request already sent"
-    }
-    ```
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": "Contact request sent"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 400 BAD REQUEST
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "Contact request already sent"
+      }
+      ```
 
-### List Contact Requests
+### Liệt kê Yêu cầu Liên hệ
 
-Retrieves the list of pending contact requests for the authenticated user.
+Truy xuất danh sách các yêu cầu liên hệ đang chờ xử lý cho người dùng đã xác thực.
 
 - **URL**: `/contact/requests`
-- **Method**: `GET`
-- **Auth required**: Yes
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "requests": [
-        {
-          "id": "req123",
-          "from": {
-            "id": "user456",
-            "username": "johndoe"
-          },
-          "timestamp": "2023-05-20T10:30:00Z"
-        }
-      ]
-    }
-    ```
+- **Phương thức**: `GET`
+- **Yêu cầu xác thực**: Có
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "requests": [
+          {
+            "id": "req123",
+            "from": {
+              "id": "user456",
+              "username": "johndoe"
+            },
+            "timestamp": "2023-05-20T10:30:00Z"
+          }
+        ]
+      }
+      ```
 
-### Accept Contact Request
+### Chấp nhận Yêu cầu Liên hệ
 
-Accepts a contact request.
+Chấp nhận một yêu cầu liên hệ.
 
 - **URL**: `/contact/accept`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Thân yêu cầu**:
   ```json
   {
     "requestId": "req123"
   }
   ```
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": "Contact request accepted"
-    }
-    ```
-- **Error Response**:
-  - **Code**: 404 NOT FOUND
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "Request not found"
-    }
-    ```
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": "Contact request accepted"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 404 NOT FOUND
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "Request not found"
+      }
+      ```
 
-### Deny Contact Request
+### Từ chối Yêu cầu Liên hệ
 
-Denies a contact request.
+Từ chối một yêu cầu liên hệ.
 
 - **URL**: `/contact/deny`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Thân yêu cầu**:
   ```json
   {
     "requestId": "req123"
   }
   ```
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": "Contact request denied"
-    }
-    ```
-- **Error Response**:
-  - **Code**: 404 NOT FOUND
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "Request not found"
-    }
-    ```
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": "Contact request denied"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 404 NOT FOUND
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "Request not found"
+      }
+      ```
 
-### List Sent Requests
+### Liệt kê Yêu cầu Đã gửi
 
-Retrieves the list of contact requests sent by the authenticated user.
+Truy xuất danh sách các yêu cầu liên hệ được gửi bởi người dùng đã xác thực.
 
 - **URL**: `/contact/sent`
-- **Method**: `GET`
-- **Auth required**: Yes
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "requests": [
-        {
-          "id": "req123",
-          "to": {
-            "id": "user456",
-            "username": "janedoe"
-          },
-          "timestamp": "2023-05-20T10:30:00Z"
-        }
-      ]
-    }
-    ```
+- **Phương thức**: `GET`
+- **Yêu cầu xác thực**: Có
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "requests": [
+          {
+            "id": "req123",
+            "to": {
+              "id": "user456",
+              "username": "janedoe"
+            },
+            "timestamp": "2023-05-20T10:30:00Z"
+          }
+        ]
+      }
+      ```
 
-### Find Contact by Name
+### Tìm Liên hệ theo Tên
 
-Finds a contact by name.
+Tìm một liên hệ theo tên.
 
 - **URL**: `/contact/findByName`
-- **Method**: `GET`
-- **Auth required**: Yes
-- **URL Parameters**:
-  - `name=[string]`: The name to search for
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "users": [
-        {
-          "id": "user123",
-          "username": "janedoe",
-          "phone": "1234567890",
-          "email": "jane@example.com",
-          "profilePicture": "url_to_image"
-        }
-      ]
-    }
-    ```
+- **Phương thức**: `GET`
+- **Yêu cầu xác thực**: Có
+- **Tham số URL**:
+    - `name=[string]`: Tên cần tìm kiếm
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "users": [
+          {
+            "id": "user123",
+            "username": "janedoe",
+            "phone": "1234567890",
+            "email": "jane@example.com",
+            "profilePicture": "url_to_image"
+          }
+        ]
+      }
+      ```
 
-### Unfriend Contact
+### Hủy kết bạn
 
-Removes a contact from the user's contact list.
+Xóa một liên hệ khỏi danh sách liên hệ của người dùng.
 
 - **URL**: `/contact/unfriend`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Thân yêu cầu**:
   ```json
   {
     "contactId": "user123"
   }
   ```
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": "Contact removed successfully"
-    }
-    ```
-- **Error Response**:
-  - **Code**: 404 NOT FOUND
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "Contact not found"
-    }
-    ```
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": "Contact removed successfully"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 404 NOT FOUND
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "Contact not found"
+      }
+      ```
 
-### Block Contact
+### Chặn Liên hệ
 
-Blocks a contact.
+Chặn một liên hệ.
 
 - **URL**: `/contact/block`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Thân yêu cầu**:
   ```json
   {
     "userId": "user123"
   }
   ```
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": "User blocked successfully"
-    }
-    ```
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": "User blocked successfully"
+      }
+      ```
 
-### Unblock Contact
+### Bỏ chặn Liên hệ
 
-Unblocks a contact.
+Bỏ chặn một liên hệ.
 
 - **URL**: `/contact/unblock`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Thân yêu cầu**:
   ```json
   {
     "userId": "user123"
   }
   ```
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": "User unblocked successfully"
-    }
-    ```
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": "User unblocked successfully"
+      }
+      ```
 
-## Group Chat API
+## API Trò chuyện Nhóm
 
-Base path: `/group`
+Đường dẫn cơ sở: `/group`
 
-### Create Group
+### Tạo Nhóm
 
-Creates a new group chat.
+Tạo một cuộc trò chuyện nhóm mới.
 
 - **URL**: `/group/create`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Thân yêu cầu**:
   ```json
   {
     "name": "My Group Chat",
     "members": ["user123", "user456"]
   }
   ```
-- **Success Response**:
-  - **Code**: 201 CREATED
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "groupId": "group123",
-      "name": "My Group Chat"
-    }
-    ```
-- **Error Response**:
-  - **Code**: 400 BAD REQUEST
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "Group name is required"
-    }
-    ```
+- **Phản hồi thành công**:
+    - **Mã**: 201 CREATED
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "groupId": "group123",
+        "name": "My Group Chat"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 400 BAD REQUEST
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "Group name is required"
+      }
+      ```
 
-### Add Member to Group
+### Thêm Thành viên vào Nhóm
 
-Adds a member to a group chat.
+Thêm một thành viên vào cuộc trò chuyện nhóm.
 
 - **URL**: `/group/member/add`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Thân yêu cầu**:
   ```json
   {
     "groupId": "group123",
     "userId": "user789"
   }
   ```
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": "Member added successfully"
-    }
-    ```
-- **Error Response**:
-  - **Code**: 403 FORBIDDEN
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "You don't have permission to add members to this group"
-    }
-    ```
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": "Member added successfully"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 403 FORBIDDEN
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "You don't have permission to add members to this group"
+      }
+      ```
 
-### Remove Member from Group
+### Xóa Thành viên khỏi Nhóm
 
-Removes a member from a group chat.
+Xóa một thành viên khỏi cuộc trò chuyện nhóm.
 
 - **URL**: `/group/member/remove`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Thân yêu cầu**:
   ```json
   {
     "groupId": "group123",
     "userId": "user789"
   }
   ```
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": "Member removed successfully"
-    }
-    ```
-- **Error Response**:
-  - **Code**: 403 FORBIDDEN
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "You don't have permission to remove members from this group"
-    }
-    ```
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": "Member removed successfully"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 403 FORBIDDEN
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "You don't have permission to remove members from this group"
+      }
+      ```
 
-### Change Member Role
+### Thay đổi Vai trò Thành viên
 
-Changes a member's role in a group chat.
+Thay đổi vai trò của một thành viên trong cuộc trò chuyện nhóm.
 
 - **URL**: `/group/member/role`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Thân yêu cầu**:
   ```json
   {
     "groupId": "group123",
@@ -991,188 +982,188 @@ Changes a member's role in a group chat.
     "role": "admin"
   }
   ```
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": "Role changed successfully"
-    }
-    ```
-- **Error Response**:
-  - **Code**: 403 FORBIDDEN
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "You don't have permission to change roles in this group"
-    }
-    ```
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": "Role changed successfully"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 403 FORBIDDEN
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "You don't have permission to change roles in this group"
+      }
+      ```
 
-### Disband Group
+### Giải tán Nhóm
 
-Disbands a group chat.
+Giải tán một cuộc trò chuyện nhóm.
 
 - **URL**: `/group/disband`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Thân yêu cầu**:
   ```json
   {
     "groupId": "group123"
   }
   ```
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": "Group disbanded successfully"
-    }
-    ```
-- **Error Response**:
-  - **Code**: 403 FORBIDDEN
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "You don't have permission to disband this group"
-    }
-    ```
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": "Group disbanded successfully"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 403 FORBIDDEN
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "You don't have permission to disband this group"
+      }
+      ```
 
-### Get Group Members
+### Lấy Thành viên Nhóm
 
-Retrieves the list of members in a group chat.
+Truy xuất danh sách thành viên trong một cuộc trò chuyện nhóm.
 
 - **URL**: `/group/:chatId/members`
-- **Method**: `GET`
-- **Auth required**: Yes
-- **URL Parameters**:
-  - `chatId=[string]`: The ID of the group chat
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "members": [
-        {
-          "id": "user123",
-          "username": "johndoe",
-          "role": "admin"
-        },
-        {
-          "id": "user456",
-          "username": "janedoe",
-          "role": "member"
-        }
-      ]
-    }
-    ```
-- **Error Response**:
-  - **Code**: 404 NOT FOUND
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "Group not found"
-    }
-    ```
+- **Phương thức**: `GET`
+- **Yêu cầu xác thực**: Có
+- **Tham số URL**:
+    - `chatId=[string]`: ID của cuộc trò chuyện nhóm
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "members": [
+          {
+            "id": "user123",
+            "username": "johndoe",
+            "role": "admin"
+          },
+          {
+            "id": "user456",
+            "username": "janedoe",
+            "role": "member"
+          }
+        ]
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 404 NOT FOUND
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "Group not found"
+      }
+      ```
 
-### Leave Group
+### Rời Nhóm
 
-Leaves a group chat.
+Rời khỏi một cuộc trò chuyện nhóm.
 
 - **URL**: `/group/leave`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Thân yêu cầu**:
   ```json
   {
     "groupId": "group123"
   }
   ```
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": "Left group successfully"
-    }
-    ```
-- **Error Response**:
-  - **Code**: 404 NOT FOUND
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "Group not found"
-    }
-    ```
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": "Left group successfully"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 404 NOT FOUND
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "Group not found"
+      }
+      ```
 
-### Rename Group
+### Đổi tên Nhóm
 
-Renames a group chat.
+Đổi tên một cuộc trò chuyện nhóm.
 
 - **URL**: `/group/rename`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Request Body**:
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Thân yêu cầu**:
   ```json
   {
     "groupId": "group123",
     "name": "New Group Name"
   }
   ```
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": "Group renamed successfully"
-    }
-    ```
-- **Error Response**:
-  - **Code**: 403 FORBIDDEN
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "You don't have permission to rename this group"
-    }
-    ```
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": "Group renamed successfully"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 403 FORBIDDEN
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "You don't have permission to rename this group"
+      }
+      ```
 
-### Update Group Image
+### Cập nhật Ảnh Nhóm
 
-Updates the image for a group chat.
+Cập nhật ảnh cho một cuộc trò chuyện nhóm.
 
 - **URL**: `/group/:chatId/updateimage`
-- **Method**: `POST`
-- **Auth required**: Yes
-- **Content-Type**: `multipart/form-data`
-- **URL Parameters**:
-  - `chatId=[string]`: The ID of the group chat
-- **Request Body**:
-  - `image`: The image file to upload
-- **Success Response**:
-  - **Code**: 200 OK
-  - **Content**:
-    ```json
-    {
-      "success": true,
-      "message": "Group image updated successfully",
-      "imageUrl": "url_to_image"
-    }
-    ```
-- **Error Response**:
-  - **Code**: 403 FORBIDDEN
-  - **Content**:
-    ```json
-    {
-      "success": false,
-      "message": "You don't have permission to update this group's image"
-    }
-    ```
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Loại nội dung**: `multipart/form-data`
+- **Tham số URL**:
+    - `chatId=[string]`: ID của cuộc trò chuyện nhóm
+- **Thân yêu cầu**:
+    - `image`: Tệp ảnh cần tải lên
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "success": true,
+        "message": "Group image updated successfully",
+        "imageUrl": "url_to_image"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 403 FORBIDDEN
+    - **Nội dung**:
+      ```json
+      {
+        "success": false,
+        "message": "You don't have permission to update this group's image"
+      }
+      ```
