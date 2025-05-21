@@ -500,19 +500,21 @@ const contactModel = {
       if (requestIds.length > 0) {
         const notificationIds = requestIds.map(r => r.NotificationID);
 
+        const placeholders = notificationIds.map(() => '?').join(',');
+             
         // Delete the friend requests
         const deleteFriendRequestsQuery = `
           DELETE FROM friendrequest
-          WHERE NotificationID IN (?)
+          WHERE NotificationID IN (${placeholders})
         `;
-        await connection.execute(deleteFriendRequestsQuery, [notificationIds]);
+        await connection.execute(deleteFriendRequestsQuery, notificationIds);
 
         // Delete the notifications
         const deleteNotificationsQuery = `
           DELETE FROM notification
-          WHERE NotificationID IN (?)
+          WHERE NotificationID IN (${placeholders})
         `;
-        await connection.execute(deleteNotificationsQuery, [notificationIds]);
+        await connection.execute(deleteNotificationsQuery, notificationIds);
       }
 
       await connection.commit();
