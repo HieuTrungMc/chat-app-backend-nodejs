@@ -440,12 +440,8 @@ Xóa một tin nhắn.
 - **URL**: `/chat/deleteMsg`
 - **Phương thức**: `POST`
 - **Yêu cầu xác thực**: Có
-- **Thân yêu cầu**:
-  ```json
-  {
-    "messageId": "msg123"
-  }
-  ```
+- **ko thay đổi**
+
 - **Phản hồi thành công**:
     - **Mã**: 200 OK
     - **Nội dung**:
