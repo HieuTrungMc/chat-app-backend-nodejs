@@ -163,7 +163,7 @@ Controller.searchChatsByName = async (req, res) => {
 
 Controller.deleteMessage = async (req, res) => {
   try {
-    const { messageId, deleteType } = req.body;
+    const { messageId, deleteType } = req.query;
     const userId = req.query.userId;
 
     if (!messageId || !deleteType) {
