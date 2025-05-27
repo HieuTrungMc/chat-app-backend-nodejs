@@ -18,7 +18,7 @@ const credentials = { key: privateKey, cert: certificate };
 
 
 const app = express();
-const io = setupSignalingServer(server)
+
 app.use(cors());
 app.use(express.json({ extended: false }));
 
@@ -42,6 +42,9 @@ const httpsServer = https.createServer(credentials, app);
 
 expressWs(app, httpServer);
 expressWs(app, httpsServer);
+
+setupSignalingServer(httpServer)
+setupSignalingServer(httpsServer)
 
 require('./routes/websocketserver')(app);
 
