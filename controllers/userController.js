@@ -147,4 +147,27 @@ Controller.changePassword = async (req, res) => {
   }
 }
 
+Controller.resetPassword = async (req, res) => {
+  const { userId, newPassword } = req.body;
+
+  if (!userId || !newPassword) {
+    return res.status(400).json({ok: 0, message: "Both userId and newPassword are required"});
+  }
+
+  try {
+    // Check if user exists
+    const accounts = await userModel.getAccountById(userId);
+    if (accounts.length === 0) {
+      return res.status(404).json({ok: 0, message: "User not found"});
+    }
+
+    // Reset the password
+    const result = await userModel.changePassword(userId, newPassword);
+    res.status(200).json({ok: 1, message: "Password reset successfully"});
+  } catch (error) {
+    console.error("Error resetting password:", error);
+    res.status(500).json({ok: 0, message: "Error resetting password"});
+  }
+}
+
 module.exports = Controller

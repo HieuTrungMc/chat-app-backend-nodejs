@@ -13,6 +13,7 @@ router.post('/login', userController.loginAccount)
 router.post('/update', userController.updateAccount)
 router.post('/upload', upload, userController.uploadImage)
 router.post('/changepass', userController.changePassword)
+router.post('/resetpassword', userController.resetPassword)
 router.get('/2fa', twoFactorController.generateSecret);
 router.post('/2fa/verify', twoFactorController.verifyCode);
 
