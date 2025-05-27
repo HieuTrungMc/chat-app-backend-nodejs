@@ -1163,3 +1163,35 @@ Cập nhật ảnh cho một cuộc trò chuyện nhóm.
         "message": "You don't have permission to update this group's image"
       }
       ```
+### Đặt lại Mật khẩu
+
+Đặt lại mật khẩu cho một người dùng.
+
+- **URL**: `/user/resetpassword`
+- **Phương thức**: `POST`
+- **Yêu cầu xác thực**: Có
+- **Thân yêu cầu**:
+  ```json
+  {
+    "userId": "123456",
+    "newPassword": "newpassword123"
+  }
+  ```
+- **Phản hồi thành công**:
+    - **Mã**: 200 OK
+    - **Nội dung**:
+      ```json
+      {
+        "ok": 1,
+        "message": "Password reset successfully"
+      }
+      ```
+- **Phản hồi lỗi**:
+    - **Mã**: 404 NOT FOUND
+    - **Nội dung**:
+      ```json
+      {
+        "ok": 0,
+        "message": "User not found"
+      }
+      ```
