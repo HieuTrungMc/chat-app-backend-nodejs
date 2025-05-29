@@ -904,7 +904,7 @@ module.exports = (app) => {
                                           console.log(`Attempting to send message to user: ${memberId}`);
 
                                           const messagePacket = {
-                                            type: originalMessage ? 'receiveReply' : 'receiveChat',
+                                            type: originalMessage ? 'receiveChat' : 'receiveChat',
                                             chatId: chatId,
                                             message: {
                                               ...messagePayload,
@@ -1040,7 +1040,7 @@ module.exports = (app) => {
                                           console.log(`Attempting to send attachment message to user: ${memberId}`);
 
                                           const messagePacket = {
-                                            type: originalMessage ? 'receiveReply' : 'receiveChat',
+                                            type: originalMessage ? 'receiveChat' : 'receiveChat',
                                             chatId: chatId,
                                             message: {
                                               ...messagePayload,
@@ -1284,7 +1284,7 @@ module.exports = (app) => {
                                               const memberId = member.UserID;
 
                                               const messagePacket = {
-                                                type: 'receiveReply',
+                                                type: 'receiveChat',
                                                 chatId: chatId,
                                                 message: {
                                                   messageId,
@@ -1658,6 +1658,7 @@ module.exports = (app) => {
                   const message = messages[0];
 
                   // For 'unsent', verify the user is the sender
+
                   if (deleteType === 'unsent' && message.UserID !== userId) {
                     ws.send(JSON.stringify({ type: 'error', message: 'You can only unsend your own messages', originalType: 'deleteMessage' }));
                     return;

@@ -164,7 +164,7 @@ Controller.searchChatsByName = async (req, res) => {
 Controller.deleteMessage = async (req, res) => {
   try {
     const { messageId, deleteType } = req.query;
-    const userId = req.query.userId;
+    const userId = Number(req.query.userId);
 
     if (!messageId || !deleteType) {
       return res.status(400).json({
